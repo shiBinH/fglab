@@ -1,55 +1,131 @@
 ;$(function(){
 	"use strict"
+	var loaded = false
+	var loaded_interval_id = undefined
+	var START = Date.now()
+	var GAME = undefined
+	var UPDATING = false
 	
-	var scene, camera, renderer;
-	var clock;
-	var test;
+	//	test startup loading screen
+	loaded_interval_id = window.setInterval(startup, 100)
+	function startup() {
+		//	setup progress box and bar
+		if ($('#startup_progress').css('display') === 'none') {
+			var $startup_progress = $('#startup_progress')
+			$startup_progress.show()
+			$startup_progress.width(0.4 * window.innerWidth)
+			$startup_progress.css('top', window.innerHeight * 0.6)
+			$startup_progress.css('left', 0.3 * window.innerWidth)
+		}
+		//	setup startup message
+		if ($('#startup_msg').css('display') === 'none') {
+			var $msg = $('#startup_msg')
+			$msg.show()
+			$msg.css('top', window.innerHeight * 0.3)
+			$msg.css('left', window.innerWidth/2 - $msg.width()/2)
+		}
+	
+		//	advance the bar if still loading
+		if (!loaded) {
+			var diff = Date.now()-START
+			if (diff/1000 < 1.5) {	//	load condition 
+				$('#startup_progress_bar').width(0.4 * window.innerWidth * diff/1000 / 1.5)
+				$('#startup_msg').css('opacity', 1 + .5 * Math.sin(diff/1000 * Math.PI ))
+				return;
+			}
+			$('#startup_progress_bar').width(0.4 * window.innerWidth)
+			loaded = true
+			return;
+		}
+		//	show/setup main content
+		//	hide progress content
+		var $display = $('#display')
 		
-	init()
-	animate()
-	
-	function init() {
-		clock = new THREE.Clock()
-		var $document = $(document),
-				$body = $(document.body)
-		//	setup camera, scene, renderer
-		camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 1, 1000)
-		camera.position.set(0, 0, 300)
-		scene = new THREE.Scene()
-		renderer = new THREE.WebGLRenderer()
-		renderer.setSize(window.innerWidth, window.innerHeight)
-		$body.prepend(renderer.domElement)
-		$document.on('resize', ()=>{
-			//	update projection matrix and renderer on window resizing
-			camera.aspect = window.innerWidth / window.innerHeight
-			camera.updateProjectionMatrix()
-			renderer.setSize( window.innerWidth, window.innerHeight )
+		$('#top, #bot, #display').show()
+		$('#startup').hide()
+		$('#startup_progress').hide()
+		window.clearInterval(loaded_interval_id)
+		
+	/*	after clearing */
+		
+		//	load game
+		$('#options').on('click', 'button[role="load_game"]', (e)=>{
+			console.log($(e.target).attr('data-gameid'))
+			//	$(e.target).attr('disabled', true)
+			//	if a game is running, unload game and break update loop
+			if (GAME !== undefined && UPDATING) {
+				//	remove handlers attached to document
+				if (GAME.HANDLERS !== undefined && GAME.HANDLERS.DOC !== undefined) {
+					for (var event in GAME.HANDLERS.DOC) {
+						for (var i=0 ; i<GAME.HANDLERS.DOC[event].length ; i++) {
+							$(document).off(event, GAME.HANDLERS.DOC[event][i])
+						}
+					}
+				}
+				
+				$(GAME.DISPLAY).remove()
+				GAME.MENU.remove()
+				if (GAME.GAME !== undefined && GAME.GAME.renderer !== undefined) GAME.GAME.renderer.forceContextLoss()
+				GAME = $(e.target).attr('data-gameid')	//	define event callback
+				return;
+			}
+			GAME = new GAMES[$(e.target).attr('data-gameid')]();
+			$('#display').append(GAME.DISPLAY)	//	add canvas
+			$(e.target).parent().after(GAME.MENU)	//	add menu
+			UPDATING = true
+			loop()
 		})
-		//	$('#test').width(100)
 		
-		//	setup lights
-		var hemisphere = new THREE.HemisphereLight('white', 1)
-		hemisphere.position.set(0, 0, 100)
-		scene.add(hemisphere)
-		var ambient = new THREE.AmbientLight('white', 0.5)
-		scene.add(ambient)
+		function loop() {
+			//	if game is unloaded, call load game event handler
+			if (typeof(GAME)==='string') {
+				UPDATING = false
+				$('[data-gameid="'+GAME+'"]').trigger('click')
+				return;
+			}
+			GAME.update()
+			requestAnimationFrame(loop)
+		}
 		
-		//	add objects
-		test = new THREE.Mesh(new THREE.CubeGeometry(50, 50, 50), new THREE.MeshStandardMaterial())
-		scene.add(test)
-		var sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 16), new THREE.MeshStandardMaterial())
-		test.add(sphere)
-		sphere.position.set(0, 35, 0)
+		//	add options menu
+		var gameCount = 0;
+		for (let game in GAMES) {
+			let id = '#game' + gameCount;
+			let card = $('<div>')
+			card.addClass('card')
+			//	card header
+			let a = $('<a>')
+			a.attr('data-toggle', 'collapse'); a.attr('data-parent', '#options'); a.attr('href', id)
+			a.text(game)
+			let h5 = $('<h5>')
+			h5.addClass('mb-0')
+			let cardheader = $('<div>')
+			cardheader.addClass('card-header')
+			h5.append(a); cardheader.append(h5); card.append(cardheader)
+			//	card contents
+			let btn = $('<button>')
+			btn.attr('data-gameid', game); btn.attr('role', 'load_game'); btn.addClass('btn btn-secondary'); btn.text('Load')
+			let btngroup = $('<div>')
+			btngroup.addClass('btn-group-vertical col'); btngroup.prop('type', 'button')
+			let cardblock = $('<div>')
+			cardblock.addClass('card-block')
+			let contents = $('<div>')
+			contents.prop('id', id.substring(1)); contents.addClass('collapse')
+			btngroup.append(btn); cardblock.append(btngroup); contents.append(cardblock)
+			//	add to card and #options
+			let $options = $('#options')
+			card.append(cardheader); card.append(contents)
+			$options.append(card)
+			
+			gameCount++;
+		}
 		
-		renderer.render(scene, camera)
-		
+		//	on window resizing
+		$(window).on('resize', ()=>{
+			//	update projection matrix and renderer on window resizing
+			if (GAME === undefined) return;
+			GAME.onresize()
+		})
 	}
-	
-	function animate() {
-		test.rotation.y += Math.PI * 1/120
-		test.rotation.x += .7 * Math.PI * 1/120
-		
-		renderer.render(scene, camera)
-		requestAnimationFrame(animate)
-	}
+
 })
