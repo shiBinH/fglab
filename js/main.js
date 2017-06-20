@@ -1,10 +1,15 @@
+/*	global $	*/
+/*	global GAMES	*/
+/* global THREE	*/
+
 ;$(function(){
 	"use strict"
-	var loaded = false
-	var loaded_interval_id = undefined
-	var START = Date.now()
-	var GAME = undefined
-	var UPDATING = false
+	var loaded = false	//	if startup progress bar has loaded
+	var loaded_interval_id = undefined	//	interval id of startup function
+	var START = Date.now()	//	start of app
+	var GAME = undefined	//	current game
+	var UPDATING = false	//	if looping
+	var RENDERER = new THREE.WebGLRenderer()
 	
 	//	test startup loading screen
 	loaded_interval_id = window.setInterval(startup, 100)
@@ -41,6 +46,7 @@
 		//	hide progress content
 		var $display = $('#display')
 		
+		$display.height(window.innerHeight * 0.8)
 		$('#top, #bot, #display').show()
 		$('#startup').hide()
 		$('#startup_progress').hide()
@@ -51,28 +57,37 @@
 		//	load game
 		$('#options').on('click', 'button[role="load_game"]', (e)=>{
 			console.log($(e.target).attr('data-gameid'))
-			//	$(e.target).attr('disabled', true)
+			
 			//	if a game is running, unload game and break update loop
 			if (GAME !== undefined && UPDATING) {
-				//	remove handlers attached to document
-				if (GAME.HANDLERS !== undefined && GAME.HANDLERS.DOC !== undefined) {
-					for (var event in GAME.HANDLERS.DOC) {
-						for (var i=0 ; i<GAME.HANDLERS.DOC[event].length ; i++) {
-							$(document).off(event, GAME.HANDLERS.DOC[event][i])
+				//	remove handlers attached to document/window
+				if (GAME.HANDLERS !== undefined) {
+					if (GAME.HANDLERS.DOC !== undefined) {
+						for (var event in GAME.HANDLERS.DOC) {
+							for (var i=0 ; i<GAME.HANDLERS.DOC[event].length ; i++) {
+								$(document).off(event, GAME.HANDLERS.DOC[event][i])
+							}
+						}
+					}
+					if (GAME.HANDLERS.WIN !== undefined) {
+						for (var event in GAME.HANDLERS.WIN) {
+							for (var i=0 ; i<GAME.HANDLERS.WIN[event].length ; i++) {
+								$(window).off(event, GAME.HANDLERS.WIN[event][i])
+							}
 						}
 					}
 				}
-				
+				//	remove current game
 				$(GAME.DISPLAY).remove()
-				GAME.MENU.remove()
-				if (GAME.GAME !== undefined && GAME.GAME.renderer !== undefined) GAME.GAME.renderer.forceContextLoss()
+				if (GAME.MENU) GAME.MENU.remove()
 				GAME = $(e.target).attr('data-gameid')	//	define event callback
 				return;
 			}
-			GAME = new GAMES[$(e.target).attr('data-gameid')]();
+			GAME = new GAMES[$(e.target).attr('data-gameid')]({renderer: RENDERER});
 			$('#display').append(GAME.DISPLAY)	//	add canvas
 			$(e.target).parent().after(GAME.MENU)	//	add menu
 			UPDATING = true
+			console.log('game loaded')
 			loop()
 		})
 		
