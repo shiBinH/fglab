@@ -234,6 +234,11 @@ $(()=>{
                 first_player: 0,
                 board: undefined,
                 update: function(data) {
+                    if (this.action.unload.on) {
+                        var status = this.action.unload.update()
+                        return status;
+                    }
+                    
                     if (this.board === undefined) { //  startup
                         console.log('single mode start')
                         this.board = [0]
@@ -276,6 +281,11 @@ $(()=>{
                 action: {
                     setup: {
                         on: false,
+                        reset: function() {
+                            thisgame.MODES.single.board = undefined
+                            thisgame.MODES.single.first_player = 0
+                            thisgame.MODES.single.turn = 0
+                        },
                         update: function(data) {
                             //  enlarge squares
                             if (thisgame.GAME.objs.sq[1].scale.x < 79.5/60) {
@@ -293,9 +303,6 @@ $(()=>{
                                 this.on = false
                                 thisgame.MODES.single.action.vs.on = true
                             }
-                        },
-                        reset: function() {
-                            this.on = false
                         }
                     },
                     vs: {
@@ -700,6 +707,46 @@ $(()=>{
                             this.on = false
                             action.vs.on = true
                         }
+                    },
+                    unload: {
+                        on: false,
+                        progress: 0,
+                        update: function() {
+                            if (this.progress === 0) {
+                                for (var i=0 ; i<5 ; i++) {
+                                    if (thisgame.GAME.objs.circle[i].GAME.onboard) {
+                                        thisgame.GAME.scene.remove(thisgame.GAME.objs.circle[i])
+                                        thisgame.GAME.objs.circle[i].GAME.onboard = false
+                                        return;
+                                    }
+                                    if (thisgame.GAME.objs.cross[i].GAME.onboard) {
+                                        thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
+                                        thisgame.GAME.objs.cross[i].GAME.onboard = false
+                                        return;
+                                    }
+                                }
+                                this.progress++;
+                            } else if (thisgame.GAME.objs.sq[1].scale.x > 60/79.5) {
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x -= 0.01
+                                    thisgame.GAME.objs.sq[i].scale.y -= 0.01
+                                }
+                            } else {
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x = 60/79.5
+                                    thisgame.GAME.objs.sq[i].scale.y = 60/79.5
+                                }
+                                for (var action in thisgame.MODES.single.action) {
+                                    if (thisgame.MODES.single.action[action].reset) thisgame.MODES.single.action[action].reset()
+                                }
+                                this.progress = 0
+                                this.on = false
+                                thisgame.MODES.single.on = false
+                                return {
+                                    multi: true
+                                }
+                            }
+                        }
                     }
                 } 
             },
@@ -708,9 +755,13 @@ $(()=>{
                 board: undefined,
                 first_player: 0,
                 turn: 0,
-                winner: undefined,
                 update: function(data) {
-                    if (this.board === undefined) {
+                   if (this.action.unload.status === 1) {
+                       var status = this.action.unload.update()
+                       return status;
+                   }
+                   
+                    if (this.board === undefined) {     //  setup if board is undefined
                         this.board = [0]
                         this.action.setup.status = 1
                     } if (this.action.setup.status === 1) {
@@ -774,6 +825,11 @@ $(()=>{
                 action: {
                     setup: {
                         status: 0,
+                        reset: function() {
+                            thisgame.MODES.multi.board = undefined
+                            thisgame.MODES.multi.first_player = 0
+                            thisgame.MODES.multi.turn = 0
+                        },
                         update: function(data) {
                             //  enlarge squares
                             if (thisgame.GAME.objs.sq[1].scale.x < 79.5/60) {
@@ -956,27 +1012,6 @@ $(()=>{
                                 thisgame.MODES.multi.action.vs.reset()
                                 this.progress = 1
                             } else if (this.progress === 1) {
-                                /*
-                                var action = thisgame.MODES.single.action
-                                action.vs.reset()   //  reset action variables
-                                action.victory.reset()  //   reset victory variables
-                                //  reset board
-                                for (var i=data.board.length ; i>1 ; i--) {
-                                    data.board.pop()
-                                }
-                                data.board[0] = 0
-                                //  reset and remove pieces
-                                for (var i=0 ; i<=4 ; i++) {
-                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.circle[i])
-                                    thisgame.GAME.objs.circle[i].GAME.onboard = false
-                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
-                                    thisgame.GAME.objs.cross[i].GAME.onboard = false
-                                }
-                                
-                                //  reset to vs stage
-                                this.on = false
-                                action.vs.on = true
-                                */
                                 for (var i=data.board.length ; i>0 ; i--) {
                                     data.board.pop()
                                 }
@@ -997,6 +1032,46 @@ $(()=>{
                         reset: function() {
                             this.status = 0
                             this.progress = 0
+                        }
+                    },
+                    unload: {
+                        status: 0,
+                        progress: 0,
+                        update: function() {
+                            if (this.progress === 0) {
+                                for (var i=0 ; i<5 ; i++) {
+                                    if (thisgame.GAME.objs.circle[i].GAME.onboard) {
+                                        thisgame.GAME.scene.remove(thisgame.GAME.objs.circle[i])
+                                        thisgame.GAME.objs.circle[i].GAME.onboard = false
+                                        return;
+                                    }
+                                    if (thisgame.GAME.objs.cross[i].GAME.onboard) {
+                                        thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
+                                        thisgame.GAME.objs.cross[i].GAME.onboard = false
+                                        return;
+                                    }
+                                }
+                                this.progress++;
+                            } else if (thisgame.GAME.objs.sq[1].scale.x > 60/79.5) {
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x -= 0.01
+                                    thisgame.GAME.objs.sq[i].scale.y -= 0.01
+                                }
+                            } else {
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x = 60/79.5
+                                    thisgame.GAME.objs.sq[i].scale.y = 60/79.5
+                                }
+                                for (var action in thisgame.MODES.multi.action) {
+                                    if (thisgame.MODES.multi.action[action].reset) thisgame.MODES.multi.action[action].reset()
+                                }
+                                this.progress = 0
+                                this.status = 0
+                                thisgame.MODES.multi.on = false
+                                return {
+                                    single: true
+                                }
+                            }
                         }
                     }
                 }
@@ -1123,10 +1198,18 @@ $(()=>{
             var btns = ['2 Player', 'Single Player']
             var click_handlers = [
                 (e)=> {
-                    if (!this.MODES.single.on) this.MODES.multi.on = true
+                    if (this.MODES.single.on) {
+                        this.MODES.single.action.unload.on = true
+                        return;
+                    }
+                    this.MODES.multi.on = true
                 },
                 (e)=> {
-                    if (!this.MODES.multi.on) this.MODES.single.on = true
+                    if (this.MODES.multi.on) {
+                        this.MODES.multi.action.unload.status = 1
+                        return;
+                    }
+                    this.MODES.single.on = true
                 }
                 
             ]
@@ -1221,13 +1304,18 @@ $(()=>{
         }
         
         this.update = function() {
-            
             //  delegate update to single/multi update
             if (this.MODES.single.on) {
-                this.MODES.single.update()
+                var status = this.MODES.single.update()
+                if (status) {
+                    if (status.multi) this.MODES.multi.on = true
+                }
                 
             } else if (this.MODES.multi.on) {
-                this.MODES.multi.update()
+                status = this.MODES.multi.update()    
+                if (status) {
+                    if (status.single) this.MODES.single.on = true
+                }
                 
             }
     
