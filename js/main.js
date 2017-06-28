@@ -57,7 +57,7 @@
 		//	load game
 		$('#options').on('click', 'button[role="load_game"]', (e)=>{
 			console.log($(e.target).attr('data-gameid'))
-			
+			e.target.blur()	//	unfocused button
 			//	if a game is running, unload game and break update loop
 			if (GAME !== undefined && UPDATING) {
 				//	remove handlers attached to document/window
@@ -80,12 +80,15 @@
 				//	remove current game
 				$(GAME.DISPLAY).remove()
 				if (GAME.MENU) GAME.MENU.remove()
+				if (GAME.MSG_BOX) GAME.MSG_BOX.box.remove()
 				GAME = $(e.target).attr('data-gameid')	//	define event callback
 				return;
 			}
+			//	create game
 			GAME = new GAMES[$(e.target).attr('data-gameid')]({renderer: RENDERER});
 			$('#display').append(GAME.DISPLAY)	//	add canvas
 			$(e.target).parent().after(GAME.MENU)	//	add menu
+			if (GAME.MSG_BOX) $('#display').append(GAME.MSG_BOX.box)	//	add message box
 			UPDATING = true
 			console.log('game loaded')
 			loop()

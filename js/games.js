@@ -127,7 +127,7 @@ $(()=>{
             $col.append($row); $row.append($btngroup)
             
             return $col;
-        })()
+        })();
         
         //  update function
         this.update = function(data) {
@@ -166,6 +166,11 @@ $(()=>{
             GAME (Object): contains game variables
             DISPLAY (HTML5 canvas): canvas element containing THREE.js renderer
             MENU (jQuery object): jQuery object containing game menu
+            MSG_BOX (Object): {
+                box: $(div)
+                message: (from) (message)
+                announcement: (message)
+            }
             HANDLERS (Object): contains DOM event handlers
         Functions:
             init(): initializes key variables
@@ -267,9 +272,6 @@ $(()=>{
                         }
                         this.action.newgame.update(dataObj)
                     }
-                },
-                reset: function() {
-                
                 },
                 action: {
                     setup: {
@@ -541,15 +543,22 @@ $(()=>{
                                     var winner = this.wincheck(data.board)
                                     if (winner !== 0) {
                                         if (winner === 1) { //  first player wins
-                                            if (data.first === 0) console.log('Player wins!')
-                                            else console.log('AI wins!')
+                                            var msg = 'AI wins!'
+                                            if (data.first === 0) msg = 'Player wins!'
+                                            thisgame.MSG_BOX.announcement({
+                                                message: msg
+                                            })
                                         } else {    //  second player wins
                                             if (data.first === 1) {
-                                                console.log('Player wins!')
+                                                thisgame.MSG_BOX.announcement({
+                                                    message: 'Player wins!'
+                                                })
                                                 thisgame.MODES.single.first_player = 0
                                             }
                                             else {
-                                                console.log('AI wins!')
+                                                thisgame.MSG_BOX.announcement({
+                                                    message: 'AI wins!'
+                                                })
                                                 thisgame.MODES.single.first_player = 1
                                             }
                                         }
@@ -558,7 +567,9 @@ $(()=>{
                                         return;
                                     } else {
                                         if (data.board[0] === 9) {
-                                            console.log('Draw!')
+                                            thisgame.MSG_BOX.announcement({
+                                                message: 'Draw!'
+                                            })
                                             this.on = false
                                             thisgame.MODES.single.action.victory.on = true
                                         }
@@ -642,7 +653,7 @@ $(()=>{
                                             
                                             break;
                                         }
-                                        
+                                        //  return selected square's color to empty
                                         thisgame.GAME.objs.sq[this.move].material.color = thisgame.GAME.objs.sq[0].empty
                                     } else {    //  reset after animation
                                         this.turn = undefined
@@ -694,8 +705,300 @@ $(()=>{
             },
             multi: {
                 on: false,
-                update: function(board) {
-                    
+                board: undefined,
+                first_player: 0,
+                turn: 0,
+                winner: undefined,
+                update: function(data) {
+                    if (this.board === undefined) {
+                        this.board = [0]
+                        this.action.setup.status = 1
+                    } if (this.action.setup.status === 1) {
+                        this.action.setup.update()
+                    } else if (this.action.vs.status === 1) {
+                        var dataObj = {
+                            turn: this.turn,
+                            first: this.first_player,
+                            board: this.board
+                        }
+                        var statusObj = this.action.vs.update(dataObj)
+                        if (!statusObj) {   //  if no update
+                            return;
+                        } else if (statusObj.victor !== undefined) {
+                            var victor = statusObj.victor
+                            if (victor === 0) {     //  draw
+                                var msg = "Draw!"
+                                thisgame.MSG_BOX.announcement({
+                                    message: msg
+                                })
+                                this.first_player = 1-this.first_player
+                                this.turn = this.first_player
+                            } else if (this.first_player === 0) {  //  first player is circle
+                                var msg = "Player O"
+                                if (victor === -1) {
+                                    msg = "Player X"
+                                    this.first_player = 1
+                                    this.turn = 1
+                                }
+                                thisgame.MSG_BOX.announcement({
+                                    message: msg + " wins!"
+                                })
+                            } else {    //   first player is cross
+                                var msg = "Player X"
+                                if (victor === -1) {
+                                    msg = "Player O"
+                                    this.first_player = 0
+                                    this.turn = 0
+                                }
+                                console.log(msg)
+                                thisgame.MSG_BOX.announcement({
+                                    message: msg + " wins!"
+                                })
+                            }
+                            this.action.vs.status = 0
+                            this.action.victory.status = 1
+                        } else if (statusObj.changeturn) {
+                            this.turn = 1-this.turn
+                        }
+                    } else if (this.action.victory.status === 1) {
+                        var status = this.action.victory.update()
+                        if (status) {
+                            this.action.newgame.status = 1
+                        }
+                    } else if (this.action.newgame.status === 1) {
+                        this.action.newgame.update({
+                            board: this.board
+                        })
+                    }
+                },
+                action: {
+                    setup: {
+                        status: 0,
+                        update: function(data) {
+                            //  enlarge squares
+                            if (thisgame.GAME.objs.sq[1].scale.x < 79.5/60) {
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x += 0.01
+                                    thisgame.GAME.objs.sq[i].scale.y += 0.01
+                                }
+                            }
+                            else {
+                                //  ensure squares arent overscaled
+                                for (var i=1 ; i<=9 ; i++) {
+                                    thisgame.GAME.objs.sq[i].scale.x = 79.5/60
+                                    thisgame.GAME.objs.sq[i].scale.y = 79.5/60
+                                }
+                                this.status = 0
+                                thisgame.MODES.multi.action.vs.status = 1
+                            }
+                        },
+                    },
+                    vs: {
+                        status: 0,
+                        hover: undefined,
+                        queue: undefined,
+                        reset: function() {
+                            this.hover = undefined
+                            this.queue = undefined
+                            this.status = 0
+                            this.action.reset()
+                        },
+                        wincheck: function(board) {
+                            //  returns 1 if player 1 wins
+                            //  -1 if player 2 wins
+                            //  0 if draw
+                            for (var i=1 ; i<=7 ; i+=3) {
+                                var win = true
+                                for (var j=0 ; j<2 ; j++) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+1]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return (board[i]%2===0?1:-1);
+                                }
+                            }
+                            for (var i=1 ; i<=3 ; i++) {
+                                win = true
+                                for (var j=0 ; j<=3 ; j+=3) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+3]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return (board[i]%2===0?1:-1);
+                                }
+                            }
+                            if (board[1] !== undefined && board[1]%2 === board[5]%2 && board[5]%2 === board[9]%2) return (board[1]%2===0?1:-1)
+                            if (board[3] !== undefined && board[3]%2 === board[5]%2 && board[5]%2 === board[7]%2) return (board[3]%2===0?1:-1)
+                            
+                            return 0;
+                        },
+                        update: function(data) {
+                            
+                            if (this.action.makingmove.status === 1) {
+                                var statusObj = this.action.makingmove.update()
+                                if (statusObj) {    //  if finish making move
+                                    var victor = this.wincheck(data.board)
+                                    if (victor !== 0) {
+                                        return {
+                                            victor: victor
+                                        }
+                                    } else if (data.board[0] === 9) {
+                                        return {
+                                            victor: 0
+                                        }
+                                    }
+                                }
+                                return statusObj;
+                            }
+                            
+                            if (this.queue === undefined) {
+                                this.queue = []
+                            } else if (this.queue.length) {
+                                var move = this.queue.shift()
+                                var square = move.square
+                                data.board[square] = data.board[0]++;
+                                
+                                var piece = (data.turn === 0 ? thisgame.GAME.objs.circle : thisgame.GAME.objs.cross)
+                                for (var i=0 ; i<piece.length ; i++) {  //  add unused piece to board
+                                    if (piece[i].GAME.onboard) continue;
+                                    
+                                    thisgame.GAME.scene.add(piece[i])
+                                    piece[i].GAME.onboard = true
+                                    var pos = [0,
+                                        {x:-80, y:80}, {x:0, y:80}, {x:80, y:80},
+                                        {x:-80, y:0}, {x:0, y:0}, {x:80, y:0},
+                                        {x:-80, y:-80}, {x:0, y:-80}, {x:80, y:-80}
+                                    ]
+                                    piece[i].position.set(pos[square].x, pos[square].y, 0)
+                                    
+                                    break;
+                                }
+                                this.action.makingmove.update({
+                                    move: square
+                                })
+                            }
+                            
+                            thisgame.GAME.mouse.rayc.setFromCamera(thisgame.GAME.mouse.coords, thisgame.GAME.camera)
+                            var intersections = thisgame.GAME.mouse.rayc.intersectObjects(thisgame.GAME.scene.children)
+                            var obj = undefined
+                            
+                            //  highlight on hover
+                            var onboard = false //  hovering over board
+                            for (var i=0 ; i<intersections.length ; i++) {
+                                if (intersections[i].object.purpose !== undefined && intersections[i].object.purpose.match(/square/)) {
+                                    obj = intersections[i].object
+                                    if (data.board[+obj.purpose.charAt(6)] !== undefined) {   //  skip if selected
+                                        onboard = false
+                                        
+                                        break;  
+                                    }
+                                    obj.material.color = thisgame.GAME.objs.sq[0].hover
+                                    this.hover = +obj.purpose.charAt(6)
+                                    onboard = true
+                                    
+                                    break;   
+                                }
+                            }
+                            //  de-highlight on hover out
+                            for (var i=1 ; i<=9 ; i++) {
+                                if (thisgame.GAME.objs.sq[i] === obj || data.board[+thisgame.GAME.objs.sq[i].purpose.charAt(6)] !== undefined) continue
+                                thisgame.GAME.objs.sq[i].material.color = thisgame.GAME.objs.sq[0].empty
+                            }
+                            //   if not on board, set hovered square to undefined
+                            if (!onboard) this.hover = undefined
+                        },
+                        action: {
+                            makingmove: {
+                                status: 0,
+                                move: undefined,
+                                update: function(data) {
+                                    if (this.move === undefined) {
+                                        this.move = data.move
+                                        this.status = 1
+                                    } else {
+                                        //  dehighlight selected square
+                                        thisgame.GAME.objs.sq[this.move].material.color = thisgame.GAME.objs.sq[0].empty
+                                        this.reset()
+                                        return {
+                                            changeturn: true
+                                        }
+                                    }
+                                },
+                                reset: function() {
+                                    this.status = 0
+                                    this.move = undefined
+                                }
+                            },
+                            reset: function() {
+                                this.makingmove.reset()
+                            }
+                        }
+                    },
+                    victory: {
+                        status: 0,
+                        update: function() {
+                            if (this.status === 1) {
+                                this.status = 0
+                                return true;
+                            }
+                            
+                        }
+                    },
+                    newgame: {
+                        status: 0,
+                        progress: 0,
+                        update: function(data) {
+                            if (this.progress === 0) {
+                                thisgame.MODES.multi.action.vs.reset()
+                                this.progress = 1
+                            } else if (this.progress === 1) {
+                                /*
+                                var action = thisgame.MODES.single.action
+                                action.vs.reset()   //  reset action variables
+                                action.victory.reset()  //   reset victory variables
+                                //  reset board
+                                for (var i=data.board.length ; i>1 ; i--) {
+                                    data.board.pop()
+                                }
+                                data.board[0] = 0
+                                //  reset and remove pieces
+                                for (var i=0 ; i<=4 ; i++) {
+                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.circle[i])
+                                    thisgame.GAME.objs.circle[i].GAME.onboard = false
+                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
+                                    thisgame.GAME.objs.cross[i].GAME.onboard = false
+                                }
+                                
+                                //  reset to vs stage
+                                this.on = false
+                                action.vs.on = true
+                                */
+                                for (var i=data.board.length ; i>0 ; i--) {
+                                    data.board.pop()
+                                }
+                                data.board[0] = 0
+                                for (var i=0 ; i<=4 ; i++) {
+                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.circle[i])
+                                    thisgame.GAME.objs.circle[i].GAME.onboard = false
+                                    thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
+                                    thisgame.GAME.objs.cross[i].GAME.onboard = false
+                                }
+                                this.progress = 2
+                                
+                            } else if (this.progress === 2) {
+                                this.reset()
+                                thisgame.MODES.multi.action.vs.status = 1
+                            }
+                        },
+                        reset: function() {
+                            this.status = 0
+                            this.progress = 0
+                        }
+                    }
                 }
                 
             }
@@ -716,6 +1019,8 @@ $(()=>{
                 ],
                 click: [
                     (e)=> {
+                        //  unfocus button pressed
+                        if (e.target === thisgame.DISPLAY) thisgame.MENU.find('button').trigger('blur')
                         //  if single mode
                         if (thisgame.MODES.single.on) {
                             var move = thisgame.MODES.single.action.vs.hover
@@ -725,10 +1030,20 @@ $(()=>{
                                     square: move
                                 })
                             }
-                        } else {    //  if vs mode
-                            
+                        } else if (thisgame.MODES.multi.on) {    //  if vs mode
+                            var move = thisgame.MODES.multi.action.vs.hover
+                            if (move !== undefined) {
+                                thisgame.MODES.multi.action.vs.queue.push({
+                                    square: move
+                                })
+                            }
                         }
                     }
+                ],
+                keydown: [
+                    (e)=> {
+                        if (e.keyCode === 13) this.MSG_BOX.showLatest()
+                    }    
                 ]
             },
             WIN: {
@@ -805,16 +1120,13 @@ $(()=>{
         
         this.MENU = (()=>{
             var $btngroup = $('<div>')
-            var btns = ['Reset', '2 Player', 'Single Player']
+            var btns = ['2 Player', 'Single Player']
             var click_handlers = [
-                (e)=>{
-                    console.log('reset button pressed')
+                (e)=> {
+                    if (!this.MODES.single.on) this.MODES.multi.on = true
                 },
                 (e)=> {
-                    this.MODES.multi.on = true
-                },
-                (e)=> {
-                    this.MODES.single.on = true
+                    if (!this.MODES.multi.on) this.MODES.single.on = true
                 }
                 
             ]
@@ -842,6 +1154,71 @@ $(()=>{
             
             return $col;
         })()
+        this.MSG_BOX = (()=>{
+            //  add communications box
+            var $div = $('<div>')
+            $div.width(0.4*this.GAME.displayWidth); $div.height(this.GAME.displayHeight * 0.33)
+            $div.css('background-color', 'rgba(58,58,58,0.75)')
+            $div.css('position', 'absolute')
+            $div.css('z-index', 1200)
+            return $div;
+        })()
+        this.MSG_BOX = {
+            hide_id: undefined, //  set timeout id
+            box: (()=>{ //  $(div) chat box
+                //  add communications box
+                var $div = $('<div>')
+                $div.css({
+                    'width': 0.4*this.GAME.displayWidth,
+                    'height': 0.33*this.GAME.displayHeight,
+                    'max-height': 0.33*this.GAME.displayHeight,
+                    'max-width': 0.4*this.GAME.displayWidth,
+                    'top': 0,
+                    'left': 0,
+                    'z-index': 1200,
+                    'position': 'absolute',
+                    'background-color': 'rgba(58,58,58,0.75)',
+                    'text-transform': 'uppercase',
+                    'display': 'none',
+                    'overflow': 'hidden'
+                })
+                return $div;
+            })(),
+            message: function(info) {   //  message from sender
+                var $msg = $('<div>')
+                var $from = $('<b>')
+                $from.text(info.from + ': '); $from.css('color', info.from_color || 'white')
+                var $text = $('<span>')
+                $text.text(info.message); $text.css('color', info.message_color || 'white')
+                $msg.append($from); $msg.append($text)
+                this.box.append($msg)
+                if (this.box.children().length > 10) this.box.children(':first').remove()
+                this.showLatest()
+            },
+            announcement: function(info) {  //  announcement in bold
+                var $msg = $('<div>')
+                var $text = $('<b>')
+                $text.text(info.message); $text.css('color', info.message_color || 'lightgreen')
+                $msg.append($text)
+                this.box.append($msg)
+                if (this.box.children().length > 10) this.box.children(':first').remove()
+                this.showLatest()
+            },
+            hide: function() {  //  hides after certain time
+                if (this.hide_id !== undefined) {
+                    window.clearTimeout(this.hide_id)
+                }
+                this.hide_id = window.setTimeout(()=>{
+                    this.box.hide()
+                    this.hide_id = undefined
+                }, 5000)
+            },
+            showLatest: function() {
+                this.box.scrollTop(this.box.children().height() * this.box.children().length)
+                this.box.show()
+                this.hide()
+            }
+        }
         
         this.update = function() {
             
@@ -853,31 +1230,7 @@ $(()=>{
                 this.MODES.multi.update()
                 
             }
-            
-            /*
-            //  no modes selected
-            if (!this.MODES.multi.on && !this.MODES.single.on) return;
-            thisgame.GAME.mouse.rayc.setFromCamera(thisgame.GAME.mouse.coords, thisgame.GAME.camera)
-            var intersections = thisgame.GAME.mouse.rayc.intersectObjects(thisgame.GAME.scene.children)
-            var obj = undefined
-            
-            //  highlight on hover
-            for (var i=0 ; i<intersections.length ; i++) {
-                if (intersections[i].object.purpose !== undefined && intersections[i].object.purpose.match(/square/)) {
-                    obj = intersections[i].object
-                    obj.material.color = thisgame.GAME.objs.sq[0].hover
-                    
-                    break;   
-                }
-            }
-            //  de-highlight on hover out
-            for (var i=1 ; i<=9 ; i++) {
-                if (thisgame.GAME.objs.sq[i] === obj) continue
-                thisgame.GAME.objs.sq[i].material.color = thisgame.GAME.objs.sq[0].empty
-            }
-            */
-            
-            
+    
             thisgame.GAME.renderer.render(thisgame.GAME.scene, thisgame.GAME.camera)
         }
         
