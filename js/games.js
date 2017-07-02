@@ -204,7 +204,8 @@ $(()=>{
             }
             this.GAME.objs.sq.push({
                 empty: new THREE.Color('darkgrey'),
-                hover: new THREE.Color('lightgrey')
+                hover: new THREE.Color('lightgrey'),
+                highlight: new THREE.Color('lightgreen')
             })
             this.CLOCK = new THREE.Clock()
             this.START = this.CLOCK.getElapsedTime()
@@ -656,7 +657,7 @@ $(()=>{
                                                 {x:-80, y:0}, {x:0, y:0}, {x:80, y:0},
                                                 {x:-80, y:-80}, {x:0, y:-80}, {x:80, y:-80}
                                             ]
-                                            piece[i].position.set(pos[this.move].x, pos[this.move].y, 0)
+                                            piece[i].position.set(pos[this.move].x, pos[this.move].y, 0.5)
                                             
                                             break;
                                         }
@@ -673,12 +674,83 @@ $(()=>{
                     },
                     victory: {
                         on: false,
-                        reset: function() {
-                          this.on = false  
-                        },
+                        progress: 0,
+                        time: undefined,
+                        squares: undefined,
                         update: function(data) {
+                            if (this.progress === 0) {
+                                var win_squares = this.get_win_squares(data.board)
+                                this.squares = []
+                                for (var i=0 ; i<=9 ; i++) this.squares.push(0)
+                                for (var i=0 ; i<win_squares.length ; i++) this.squares[win_squares[i]]++;
+                                this.progress = 1
+                                this.time = thisgame.CLOCK.getElapsedTime()
+                            } else if (this.progress === 1) {
+                                var dt = (thisgame.CLOCK.getElapsedTime()-this.time)
+                                var check1 = false
+                                for (var i=1 ; i<=9; i++) {
+                                    if (thisgame.CLOCK.getElapsedTime() - this.time < 2) check1 = true   
+                                    if (this.squares[i] !== 1) continue;
+                                    
+                                    check1 = true
+                                    if (dt<0.5) break;
+                                    this.squares[i]++;
+                                    thisgame.GAME.objs.sq[i].material.color = thisgame.GAME.objs.sq[0].highlight
+                                    this.time = thisgame.CLOCK.getElapsedTime()
+                                    break;
+                                }
+                                var check2 = false
+                                for (var i=1 ; i<=9 ; i++) {
+                                    if (this.squares[i] !== 0 || thisgame.GAME.objs.sq[i].material.opacity===0) continue;
+                                    
+                                    check2 = true
+                                    thisgame.GAME.objs.sq[i].material.opacity = Math.max(0, thisgame.GAME.objs.sq[i].material.opacity-0.02)
+                                }
+                                if (!check1 && !check2) {
+                                    this.progress = 2
+                                } 
+                                
+                            } else if (this.progress === 2) {
+                                this.reset()
+                                thisgame.MODES.single.action.newgame.on = true
+                            }
+                        },
+                        get_win_squares: function(board) {
+                            //  returns array of winning square numbers
+                            for (var i=1 ; i<=7 ; i+=3) {
+                                var win = true
+                                for (var j=0 ; j<2 ; j++) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+1]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return [i, i+1, i+2];
+                                }
+                            }
+                            for (var i=1 ; i<=3 ; i++) {
+                                win = true
+                                for (var j=0 ; j<=3 ; j+=3) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+3]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return [i, i+3, i+6];
+                                }
+                            }
+                            if (board[1] !== undefined && board[1]%2 === board[5]%2 && board[5]%2 === board[9]%2) return [1, 5, 9];
+                            if (board[3] !== undefined && board[3]%2 === board[5]%2 && board[5]%2 === board[7]%2) return [3, 5, 7];
+                            
+                            return 0;
+                        },
+                        reset: function() {
                             this.on = false
-                            thisgame.MODES.single.action.newgame.on = true
+                            this.squares = undefined
+                            this.progress = 0
+                            this.time = undefined
                         }
                     },
                     newgame: {
@@ -701,6 +773,11 @@ $(()=>{
                                 thisgame.GAME.objs.circle[i].GAME.onboard = false
                                 thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
                                 thisgame.GAME.objs.cross[i].GAME.onboard = false
+                            }
+                            //  reset squares
+                            for (var i=1 ; i<=9 ; i++) {
+                                thisgame.GAME.objs.sq[i].material.opacity = 1
+                                thisgame.GAME.objs.sq[i].material.color = thisgame.GAME.objs.sq[0].empty
                             }
                             
                             //  reset to vs stage
@@ -812,7 +889,10 @@ $(()=>{
                             this.turn = 1-this.turn
                         }
                     } else if (this.action.victory.status === 1) {
-                        var status = this.action.victory.update()
+                        var dataObj = {
+                            board: this.board
+                        }
+                        var status = this.action.victory.update(dataObj)
                         if (status) {
                             this.action.newgame.status = 1
                         }
@@ -929,7 +1009,7 @@ $(()=>{
                                         {x:-80, y:0}, {x:0, y:0}, {x:80, y:0},
                                         {x:-80, y:-80}, {x:0, y:-80}, {x:80, y:-80}
                                     ]
-                                    piece[i].position.set(pos[square].x, pos[square].y, 0)
+                                    piece[i].position.set(pos[square].x, pos[square].y, 1)
                                     
                                     break;
                                 }
@@ -996,12 +1076,85 @@ $(()=>{
                     },
                     victory: {
                         status: 0,
-                        update: function() {
-                            if (this.status === 1) {
-                                this.status = 0
-                                return true;
+                        progress: 0,
+                        time: undefined,
+                        squares: undefined,
+                        update: function(data) {
+                            if (this.progress === 0) {  //  initial
+                                //  determine winning squares
+                                var win_squares = this.get_win_squares(data.board)
+                                this.squares = []
+                                for (var i=0 ; i<=9 ; i++) this.squares.push(0)
+                                for (var i=0 ; i<win_squares.length ; i++) this.squares[win_squares[i]]++;
+                                this.progress = 1
+                                this.time = thisgame.CLOCK.getElapsedTime()
+                            } else if (this.progress === 1) {   
+                                var dt = (thisgame.CLOCK.getElapsedTime()-this.time)
+                                var check1 = false
+                                for (var i=1 ; i<=9; i++) {     //  highlight winning squares
+                                    if (thisgame.CLOCK.getElapsedTime() - this.time < 2) check1 = true   
+                                    if (this.squares[i] !== 1) continue;
+                                    
+                                    check1 = true
+                                    if (dt<0.5) break;
+                                    this.squares[i]++;
+                                    thisgame.GAME.objs.sq[i].material.color = thisgame.GAME.objs.sq[0].highlight
+                                    this.time = thisgame.CLOCK.getElapsedTime()
+                                    break;
+                                }
+                                var check2 = false
+                                for (var i=1 ; i<=9 ; i++) {    //  blur out non-winning squares
+                                    if (this.squares[i] !== 0 || thisgame.GAME.objs.sq[i].material.opacity===0) continue;
+                                    
+                                    check2 = true
+                                    thisgame.GAME.objs.sq[i].material.opacity = Math.max(0, thisgame.GAME.objs.sq[i].material.opacity-0.02)
+                                }
+                                if (!check1 && !check2) {   //  if done highlighting and blurring
+                                    this.progress = 2
+                                } 
+                                
+                            } else if (this.progress === 2) {
+                                this.reset()
+                                thisgame.MODES.multi.action.newgame.status = 1
                             }
+                            console.log('progress', this.progress)
+                        },
+                        get_win_squares: function(board) {
+                            //  returns array of winning square numbers
+                            for (var i=1 ; i<=7 ; i+=3) {
+                                var win = true
+                                for (var j=0 ; j<2 ; j++) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+1]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return [i, i+1, i+2];
+                                }
+                            }
+                            for (var i=1 ; i<=3 ; i++) {
+                                win = true
+                                for (var j=0 ; j<=3 ; j+=3) {
+                                    if (board[i+j] === undefined || board[i+j]%2!==board[i+j+3]%2) {
+                                        win = false
+                                        break;
+                                    }
+                                }
+                                if (win) {
+                                    return [i, i+3, i+6];
+                                }
+                            }
+                            if (board[1] !== undefined && board[1]%2 === board[5]%2 && board[5]%2 === board[9]%2) return [1, 5, 9];
+                            if (board[3] !== undefined && board[3]%2 === board[5]%2 && board[5]%2 === board[7]%2) return [3, 5, 7];
                             
+                            return 0;
+                        },
+                        reset: function() {
+                            this.status = 0
+                            this.squares = undefined
+                            this.progress = 0
+                            this.time = undefined
                         }
                     },
                     newgame: {
@@ -1021,6 +1174,10 @@ $(()=>{
                                     thisgame.GAME.objs.circle[i].GAME.onboard = false
                                     thisgame.GAME.scene.remove(thisgame.GAME.objs.cross[i])
                                     thisgame.GAME.objs.cross[i].GAME.onboard = false
+                                }
+                                for (var s=1 ; s<=9 ; s++) {
+                                    thisgame.GAME.objs.sq[s].material.opacity = 1
+                                    thisgame.GAME.objs.sq[s].material.color = thisgame.GAME.objs.sq[0].empty
                                 }
                                 this.progress = 2
                                 
@@ -1160,6 +1317,7 @@ $(()=>{
                     plane.position.set(x, y, 0);
                     n++;
                     plane.material.color = thisgame.GAME.objs.sq[0].empty
+                    plane.material.transparent = true
                     thisgame.GAME.objs.sq.push(plane)
                 }
             }
@@ -1255,7 +1413,7 @@ $(()=>{
                     'width': 0.4*this.GAME.displayWidth,
                     'height': 0.33*this.GAME.displayHeight,
                     'max-height': 0.33*this.GAME.displayHeight,
-                    'max-width': 0.4*this.GAME.displayWidth,
+                    'max-width': 0.2*this.GAME.displayWidth,
                     'top': 0,
                     'left': 0,
                     'z-index': 1200,
