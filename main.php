@@ -91,8 +91,8 @@
 		</div>
 		<div id='bot' class='container-fluid'>
 			<div class='row'>
-				<div class='col'>
-					<h2>BOTTOM PANEL</h2>
+				<div id='panel-bottom' class='col'>
+					<div id='react_container0'></div>
 				</div>
 			</div>
 		</div>
@@ -102,6 +102,13 @@
 		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
 		<script src='js/three.min.js'></script>
 		<script src='js/games.js'></script>
+		
+		<script src="https://unpkg.com/react@15/dist/react.js"></script>
+        <script src="https://unpkg.com/react-dom@15/dist/react-dom.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.24/browser.js"></script>
+		
+		<script src='js/util.js'></script>
 		<script src='js/main.js'></script>
+		<script src='js/main_react.js' type='text/babel'></script>
 	</body>
 </html>

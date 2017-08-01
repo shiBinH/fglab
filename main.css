@@ -68,10 +68,13 @@ body {
 }
 
 #bot {
-    height: 200px;
+    min-height: 200px;
     border-bottom: 10px solid darkgreen;
     background-color: #e6ffee;
     display: none;
+}
+#react_container0 {
+    /*border: 1px solid red;*/
 }
 
 .highlight {

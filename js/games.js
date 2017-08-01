@@ -10,6 +10,7 @@ $(()=>{
     
     GAMES.SAMPLE = function(initData) {
         var thisgame = this
+        this.TITLE = 'SAMPLE'
         this.DOC = {
             clicked: undefined
         }
@@ -29,14 +30,19 @@ $(()=>{
         //  key game variables and constants
         this.init = function() {
             let $display = $('#display')
-            this.GAME.displayWidth = $display.width()
-            this.GAME.displayHeight = $display.height()
+            this.GAME.displayWidth = initData.displayWidth || $display.width()
+            this.GAME.displayHeight = initData.displayHeight || $display.height()
             this.CLOCK = new THREE.Clock()
             this.START = this.CLOCK.getElapsedTime()
             
             for (var event in this.HANDLERS.DOC) {
                 for (var h in this.HANDLERS.DOC[event]) {
                     $(document).on(event, this.HANDLERS.DOC[event][h])
+                }
+            }
+            for (var event in this.HANDLERS.WIN) {
+                for (var h in this.HANDLERS.WIN[event]) {
+                    $(window).on(event, this.HANDLERS.WIN[event][h])
                 }
             }
         }
@@ -70,8 +76,51 @@ $(()=>{
                         thisgame.GAME.keys[e.keyCode] = false
                     }
                 ]
+            },
+            WIN: {
+                resize: [
+                    (e) => {
+                        this.GAME.displayHeight = $(this.DISPLAY).parent().height()
+                        this.GAME.displayWidth = $(this.DISPLAY).parent().width()
+                        this.GAME.camera.aspect = this.GAME.displayWidth / this.GAME.displayHeight
+            			this.GAME.camera.updateProjectionMatrix()
+            			this.GAME.renderer.setSize( this.GAME.displayWidth, this.GAME.displayHeight )
+                    }
+                ]
+            },
+            MENU: {
+                click: [
+                    (e) => {
+                        thisgame.GAME.test.position.set(0,0,0)
+                    }
+                ]
             }
         }
+        this.COMMUNICATION = {
+            outgoing: {
+              outbox: [],
+              send: (data) => {
+                  console.log('received data')
+              }
+            },
+            incoming: {
+                inbox: [],
+                receive: (data) => {
+                    if (data.type === 'command') {
+                        let commands = data.data
+                        if (commands[0] === 'reset') {
+                            this.HANDLERS.MENU.click[0]()
+                        }
+                    }
+                }
+            }
+        }
+        this.RECEIVE = (data) => {
+            this.COMMUNICATION.incoming.receive(data)
+        }
+        this.COMM = new UTIL.COMM(this.TITLE)
+        this.COMM.on('incoming', this.COMMUNICATION.incoming.receive)
+
         this.init()
         //  create canvas element   
         this.DISPLAY = (()=>{
@@ -106,6 +155,7 @@ $(()=>{
     		
     		this.GAME.renderer.render(this.GAME.scene, this.GAME.camera)
             var canvas = this.GAME.renderer.domElement
+            canvas.id = this.TITLE
 
             return canvas;
         })()
@@ -147,6 +197,17 @@ $(()=>{
 		    this.GAME.renderer.render(this.GAME.scene, this.GAME.camera)
 
         }
+        this.onRemoval = () => {
+        
+            let $doc = $(document)
+            for (let event in this.HANDLERS.DOC) {
+                for (let h=0 ; h<this.HANDLERS.DOC[event].length ; h++) $doc.off(event, null, this.HANDLERS.DOC[event][h])
+            }
+            let $win = $(window)
+            for (let event in this.HANDLERS.WIN) {
+                for (let h=0 ; h<this.HANDLERS.WIN[event].length ; h++) $win.off(event, null, this.HANDLERS.WIN[event][h])
+            }
+        }
         this.onresize = function() {
             this.GAME.camera.aspect = this.GAME.displayWidth / this.GAME.displayHeight
 			this.GAME.camera.updateProjectionMatrix()
@@ -179,8 +240,8 @@ $(()=>{
             onresize(): adjusts THREE.js projection matrix
     */
     GAMES.TICTACTOE = function(initData) {
-        //  GAMES.SAMPLE.call(this);
         var thisgame = this
+        this.TITLE = 'TICTACTOE'
         this.START = undefined
         this.CLOCK = undefined
         this.GAME = {
@@ -228,6 +289,38 @@ $(()=>{
             }
             
         }
+        this.COMMUNICATION = {
+            outgoing: {
+                outbox: [],
+                send: () => {
+                    console.log('received data')
+                }
+            },
+            incoming: {
+                inbox: [],
+                receive: (data) => {
+                    if (data.type === 'command') {
+                        let commands = data.data
+                        if (commands[0] === 'mode') {
+                            if (commands[1] === 'single') this.HANDLERS.MENU.click[1]()
+                            else if (commands[1] === 'multi') this.HANDLERS.MENU.click[0]()
+                        }
+                    }
+                }
+            }
+        }
+        this.handleIncoming = (data) => {
+            if (data.type === 'command') {
+                let commands = data.data
+                if (commands[0] === 'mode') {
+                    if (commands[1] === 'single') this.HANDLERS.MENU.click[1]()
+                    else if (commands[1] === 'multi') this.HANDLERS.MENU.click[0]()
+                }
+            }
+        }
+        this.COMM = new UTIL.COMM(this.TITLE)
+        this.COMM.on('incoming', this.handleIncoming)
+        this.n = 0;
         this.MODES = {
             single: {
                 on: false,
@@ -556,16 +649,37 @@ $(()=>{
                                             thisgame.MSG_BOX.announcement({
                                                 message: msg
                                             })
+                                            thisgame.COMM.trigger('outgoing', {
+                                                from: thisgame.TITLE,
+                                                type: 'text',
+                                                data: msg,
+                                                id: thisgame.COMM.id,
+                                                n: thisgame.n++
+                                            })
                                         } else {    //  second player wins
                                             if (data.first === 1) {
                                                 thisgame.MSG_BOX.announcement({
                                                     message: 'Player wins!'
+                                                })
+                                                thisgame.COMM.trigger('outgoing', {
+                                                    from: thisgame.TITLE,
+                                                    type: 'text',
+                                                    data: 'Player wins!',
+                                                    id: thisgame.COMM.id,
+                                                    n: thisgame.n++
                                                 })
                                                 thisgame.MODES.single.first_player = 0
                                             }
                                             else {
                                                 thisgame.MSG_BOX.announcement({
                                                     message: 'AI wins!'
+                                                })
+                                                thisgame.COMM.trigger('outgoing', {
+                                                    from: thisgame.TITLE,
+                                                    type: 'text',
+                                                    data: 'AI wins!',
+                                                    id: thisgame.COMM.id,
+                                                    n: thisgame.n++
                                                 })
                                                 thisgame.MODES.single.first_player = 1
                                             }
@@ -577,6 +691,13 @@ $(()=>{
                                         if (data.board[0] === 9) {
                                             thisgame.MSG_BOX.announcement({
                                                 message: 'Draw!'
+                                            })
+                                            thisgame.COMM.trigger('outgoing', {
+                                                from: thisgame.TITLE,
+                                                type: 'text',
+                                                data: 'AI wins!',
+                                                id: thisgame.COMM.id,
+                                                n: thisgame.n++
                                             })
                                             this.on = false
                                             thisgame.MODES.single.action.victory.on = true
@@ -859,6 +980,12 @@ $(()=>{
                                 thisgame.MSG_BOX.announcement({
                                     message: msg
                                 })
+                                thisgame.COMM.trigger('outgoing', {
+                                    from: thisgame.TITLE,
+                                    type: 'text',
+                                    data: msg,
+                                    id: thisgame.COMM.events
+                                })
                                 this.first_player = 1-this.first_player
                                 this.turn = this.first_player
                             } else if (this.first_player === 0) {  //  first player is circle
@@ -871,6 +998,12 @@ $(()=>{
                                 thisgame.MSG_BOX.announcement({
                                     message: msg + " wins!"
                                 })
+                                thisgame.COMM.trigger('outgoing', {
+                                    from: thisgame.TITLE,
+                                    type: 'text',
+                                    data: msg + " wins!",
+                                    id: thisgame.COMM.events
+                                })
                             } else {    //   first player is cross
                                 var msg = "Player X"
                                 if (victor === -1) {
@@ -878,9 +1011,14 @@ $(()=>{
                                     this.first_player = 0
                                     this.turn = 0
                                 }
-                                console.log(msg)
                                 thisgame.MSG_BOX.announcement({
                                     message: msg + " wins!"
+                                })
+                                thisgame.COMM.trigger('outgoing', {
+                                    from: thisgame.TITLE,
+                                    type: 'text',
+                                    data: msg + " wins!",
+                                    id: thisgame.COMM.events
                                 })
                             }
                             this.action.vs.status = 0
@@ -1117,7 +1255,6 @@ $(()=>{
                                 this.reset()
                                 thisgame.MODES.multi.action.newgame.status = 1
                             }
-                            console.log('progress', this.progress)
                         },
                         get_win_squares: function(board) {
                             //  returns array of winning square numbers
@@ -1243,7 +1380,9 @@ $(()=>{
                         if (thisgame.DISPLAY === undefined) return;
                         var offset = $(thisgame.DISPLAY).offset()
                         var $doc = $(document)
-                        var x = Math.min(e.clientX+$doc.scrollLeft(), thisgame.GAME.displayWidth)
+                        //  0 <= x <= displayWidth
+                        //  0 <= y <= displayHeight
+                        var x = Math.min(-offset.left+e.clientX+$doc.scrollLeft(), thisgame.GAME.displayWidth)
                         var y = e.clientY+$doc.scrollTop() < offset.top ? 0 : (e.clientY+$doc.scrollTop()>offset.top+thisgame.GAME.displayHeight+$doc.scrollTop()?thisgame.GAME.displayHeight:$doc.scrollTop()+e.clientY-offset.top)
                         thisgame.GAME.mouse.coords.x = (x / thisgame.GAME.displayWidth) * 2 - 1
                         thisgame.GAME.mouse.coords.y = -(y / thisgame.GAME.displayHeight) * 2 + 1
@@ -1279,7 +1418,35 @@ $(()=>{
                 ]
             },
             WIN: {
-                
+                resize: [
+                    (e) => {
+                        this.GAME.displayHeight = $(this.DISPLAY).parent().height()
+                        this.GAME.displayWidth = $(this.DISPLAY).parent().width()
+                        this.GAME.camera.aspect = this.GAME.displayWidth / this.GAME.displayHeight
+            			this.GAME.camera.updateProjectionMatrix()
+            			this.GAME.renderer.setSize( this.GAME.displayWidth, this.GAME.displayHeight )
+                    }
+                ]
+            },
+            MENU: {
+                click: [
+                    (e)=> {
+                        if (this.MODES.single.action.victory.on || this.MODES.single.action.newgame.on) return;
+                        if (this.MODES.single.on) {
+                            this.MODES.single.action.unload.on = true
+                            return;
+                        }
+                        this.MODES.multi.on = true
+                    },
+                    (e)=> {
+                        if (this.MODES.multi.action.victory.status >= 1 || this.MODES.multi.action.newgame.status >= 1) return;
+                        if (this.MODES.multi.on) {
+                            this.MODES.multi.action.unload.status = 1
+                            return;
+                        }
+                        this.MODES.single.on = true
+                    }
+                ]
             }
         }
         this.init()
@@ -1348,6 +1515,7 @@ $(()=>{
             //  initial render
             this.GAME.renderer.render(this.GAME.scene, this.GAME.camera)
             var canvas = this.GAME.renderer.domElement
+            canvas.id = this.TITLE
             return canvas;
         })()
         
@@ -1355,21 +1523,8 @@ $(()=>{
             var $btngroup = $('<div>')
             var btns = ['2 Player', 'Single Player']
             var click_handlers = [
-                (e)=> {
-                    if (this.MODES.single.on) {
-                        this.MODES.single.action.unload.on = true
-                        return;
-                    }
-                    this.MODES.multi.on = true
-                },
-                (e)=> {
-                    if (this.MODES.multi.on) {
-                        this.MODES.multi.action.unload.status = 1
-                        return;
-                    }
-                    this.MODES.single.on = true
-                }
-                
+                this.HANDLERS.MENU.click[0],
+                this.HANDLERS.MENU.click[1]
             ]
             $btngroup.addClass('btn-group-vertical col')
             var $btn;
@@ -1476,8 +1631,20 @@ $(()=>{
                 }
                 
             }
+            
     
             thisgame.GAME.renderer.render(thisgame.GAME.scene, thisgame.GAME.camera)
+        }
+        
+        this.onRemoval = () => {
+            let $doc = $(document),
+                $win = $(window);
+            for (let event in this.HANDLERS.DOC) {
+                for (let h=0 ; h<this.HANDLERS.DOC[event].length ; h++) $doc.off(event, null, this.HANDLERS.DOC[event][h])
+            }
+            for (let event in this.HANDLERS.WIN) {
+                for (let h=0 ; h<this.HANDLERS.WIN[event].length ; h++) $win.off(event, null, this.HANDLERS.WIN[event][h])
+            }
         }
         
         this.onresize = function() {

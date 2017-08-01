@@ -33,8 +33,8 @@
 		//	advance the bar if still loading
 		if (!loaded) {
 			var diff = Date.now()-START
-			if (diff/1000 < 1.5) {	//	load condition 
-				$('#startup_progress_bar').width(0.4 * window.innerWidth * diff/1000 / 1.5)
+			if (diff/1000 < 1.0) {	//	load condition 
+				$('#startup_progress_bar').width(0.4 * window.innerWidth * diff/1000 / 1.0)
 				$('#startup_msg').css('opacity', 1 + .5 * Math.sin(diff/1000 * Math.PI ))
 				return;
 			}
