@@ -2,11 +2,11 @@
 /*  global THREE    */
 /*  global $    */
 /*  global GAMES    */
-"use strict"
 //  create GAMES object
 if (!this.GAMES) this.GAMES = {};
 
 $(()=>{
+    "use strict"
     
     GAMES.SAMPLE = function(initData) {
         var thisgame = this
@@ -30,8 +30,8 @@ $(()=>{
         //  key game variables and constants
         this.init = function() {
             let $display = $('#display')
-            this.GAME.displayWidth = initData.displayWidth || $display.width()
-            this.GAME.displayHeight = initData.displayHeight || $display.height()
+            this.GAME.displayWidth = initData.width || $display.width()
+            this.GAME.displayHeight = initData.height || $display.height()
             this.CLOCK = new THREE.Clock()
             this.START = this.CLOCK.getElapsedTime()
             
@@ -106,9 +106,10 @@ $(()=>{
             incoming: {
                 inbox: [],
                 receive: (data) => {
-                    if (data.type === 'command') {
-                        let commands = data.data
-                        if (commands[0] === 'reset') {
+                    
+                    let commands = data.data
+                    if (commands[0] === '/cmd') {
+                        if (commands[1] === 'reset') {
                             this.HANDLERS.MENU.click[0]()
                         }
                     }
@@ -197,7 +198,7 @@ $(()=>{
 		    this.GAME.renderer.render(this.GAME.scene, this.GAME.camera)
 
         }
-        this.onRemoval = () => {
+        this.gameWillUnmount = () => {
         
             let $doc = $(document)
             for (let event in this.HANDLERS.DOC) {
@@ -289,38 +290,17 @@ $(()=>{
             }
             
         }
-        this.COMMUNICATION = {
-            outgoing: {
-                outbox: [],
-                send: () => {
-                    console.log('received data')
-                }
-            },
-            incoming: {
-                inbox: [],
-                receive: (data) => {
-                    if (data.type === 'command') {
-                        let commands = data.data
-                        if (commands[0] === 'mode') {
-                            if (commands[1] === 'single') this.HANDLERS.MENU.click[1]()
-                            else if (commands[1] === 'multi') this.HANDLERS.MENU.click[0]()
-                        }
-                    }
-                }
-            }
-        }
-        this.handleIncoming = (data) => {
-            if (data.type === 'command') {
-                let commands = data.data
-                if (commands[0] === 'mode') {
-                    if (commands[1] === 'single') this.HANDLERS.MENU.click[1]()
-                    else if (commands[1] === 'multi') this.HANDLERS.MENU.click[0]()
+        this.handleIncoming = (data) => {            
+            let commands = data.data
+            if (commands[0] === '/cmd') {
+                if (commands[1] === 'mode') {
+                    if (commands[2] === 'single') this.HANDLERS.MENU.click[1]()
+                    else if (commands[2] === 'multi') this.HANDLERS.MENU.click[0]()
                 }
             }
         }
         this.COMM = new UTIL.COMM(this.TITLE)
         this.COMM.on('incoming', this.handleIncoming)
-        this.n = 0;
         this.MODES = {
             single: {
                 on: false,
@@ -695,7 +675,7 @@ $(()=>{
                                             thisgame.COMM.trigger('outgoing', {
                                                 from: thisgame.TITLE,
                                                 type: 'text',
-                                                data: 'AI wins!',
+                                                data: 'Draw!',
                                                 id: thisgame.COMM.id,
                                                 n: thisgame.n++
                                             })
@@ -732,7 +712,6 @@ $(()=>{
                                         obj = intersections[i].object
                                         if (data.board[+obj.purpose.charAt(6)] !== undefined) {   //  skip if selected
                                             onboard = false
-                                            
                                             break;  
                                         }
                                         obj.material.color = thisgame.GAME.objs.sq[0].hover
@@ -1636,7 +1615,7 @@ $(()=>{
             thisgame.GAME.renderer.render(thisgame.GAME.scene, thisgame.GAME.camera)
         }
         
-        this.onRemoval = () => {
+        this.gameWillUnmount = () => {
             let $doc = $(document),
                 $win = $(window);
             for (let event in this.HANDLERS.DOC) {

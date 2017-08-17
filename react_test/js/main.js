@@ -57,10 +57,11 @@
                             id='game_container'
                             className='row'
                             titles={titles}
+                            displayClasses='col-md-9'
+                            messageBoxClasses='col-md-3'
                         />
                         <LabFooter id='lab_footer' className='row'>
                         </LabFooter>
-
                     </div>
                 )
             }
@@ -147,28 +148,176 @@
         }
         
         class GameContainer extends React.Component {
+            /*
+                <GameContainer class='row'>
+                    <Display class='col-md-9'>
+                        <Canvas>
+                    <MessageBox class'col-md-3'>
+                        <MessagesContainer>
+                            <Message>
+                        <MessagesInputBox class='input-group'>
+            */
             constructor(props) {
                 super(props)
+
                 this.state = {
                     GAME: undefined,
-                    messages: [{text: 'Welcome!', bold: false, key: Date.now()}],
-                    input: ''
+                    messages: [{text: 'Welcome! ', bold: false, key: Date.now()}],
+                    input: '',
+                    focus: 'messageBox'
                 }
+                this.keys = {}
                 this.display = {
                     height: undefined,
                     width: undefined
                 }
                 this.renderer = new THREE.WebGLRenderer()
+                this.handlers = {
+                    document: {
+                        keydown: {
+                            gameContainer: undefined,
+                            handle: function(e) {
+                                let $domNode = $(this.gameContainer.domNode)
+
+                                if (this.gameContainer.state.focus === 'display') {
+                                    e.preventDefault()
+                                    let currentKeys = Object.assign(
+                                        {},
+                                        this.gameContainer.keys
+                                    )
+                                    currentKeys[e.keyCode] = true
+                                    this.gameContainer.keys = currentKeys
+                                    
+                                    let commands = ['/cmd', 'e', e, this.gameContainer.keys]
+                                    
+                                    this.gameContainer.COMM.trigger('outgoing',{
+                                        type: 'array',
+                                        data: commands
+                                    })
+                                }
+                                else if (this.gameContainer.state.focus === 'messageBox') ;
+                                
+                            }
+                        },
+                        keyup: {
+                            gameContainer: undefined,
+                            handle: function(e) {
+                                let $domNode = $(this.gameContainer.domNode)
+
+                                if (this.gameContainer.state.focus === 'display') {
+                                    e.preventDefault()
+                                    let currentKeys = Object.assign(
+                                        {},
+                                        this.gameContainer.keys
+                                    )
+                                    currentKeys[e.keyCode] = false
+                                    this.gameContainer.keys = currentKeys
+                                    
+                                    let commands = ['/cmd', 'e', e, this.gameContainer.keys]
+                                    
+                                    this.gameContainer.COMM.trigger('outgoing',{
+                                        type: 'array',
+                                        data: commands
+                                    })
+                                }
+                                else if (this.gameContainer.state.focus === 'messageBox') ;
+                                
+                                
+                            }
+                        },
+                        click: {
+                            gameContainer: undefined,
+                            handle: function(e) {
+                                'handle parent'
+                                let current = e.target
+                                while (current !== null) {
+                                    if (current === this.gameContainer.domNode) {
+                                        /*
+                                        if (this.gameContainer.state.focus === 'display') {
+                                            let commands = ['/cmd', 'e', e]
+                                    
+                                            this.gameContainer.COMM.trigger('outgoing', {
+                                                type: 'array',
+                                                data: commands
+                                            })
+                                        }
+                                        */
+                                        return;
+                                    }
+                                    current = current.parentNode
+                                }
+                                this.gameContainer.setState({
+                                    focus: undefined
+                                })
+
+                            }
+                        },
+                        mousemove: {
+                            gameContainer: undefined,
+                            handle: function(e) {
+                                let $domNode = $(this.gameContainer.domNode)
+                                
+                                if (this.gameContainer.state.focus === 'display') {
+                                    let commands = ['/cmd', 'e', e]
+                                    this.gameContainer.COMM.trigger('outgoing', {
+                                        type: 'array',
+                                        data: commands
+                                    })
+                                }
+                            }
+                        }
+                    },
+                    window: {
+                        resize: {
+                            gameContainer: undefined,
+                            handle: function(e) {
+                                let commands = ['/cmd', 'e', e]
+                                
+                                this.gameContainer.COMM.trigger('outgoing', {
+                                    type: 'text',
+                                    data: commands
+                                })
+                            }    
+                        }
+                    }
+                }
                 
-                this.handleGameClick = this.handleGameClick.bind(this)
+                let $document = $(document),
+                    $window = $(window)
+                for (let event in this.handlers.document) {
+                    this.handlers.document[event].gameContainer = this
+                    let handler = this.handlers.document[event].handle.bind(this.handlers.document[event])
+                    $document.on(event, handler)
+                }
+                for (let event in this.handlers.window) {
+                    this.handlers.window[event].gameContainer = this
+                    let handler = this.handlers.window[event].handle.bind(this.handlers.window[event])
+                    $window.on(event, handler)
+                }
+                
                 this.handleLoadGame = this.handleLoadGame.bind(this)
-                this.canvasDidMount = this.canvasDidMount.bind(this)
                 this.handleInputChange = this.handleInputChange.bind(this)
                 this.handleInput = this.handleInput.bind(this)
                 this.handleIncomingData = this.handleIncomingData.bind(this)
+                this.handleDisplayResize = this.handleDisplayResize.bind(this)
+                this.handleFocus = this.handleFocus.bind(this)
                 
                 this.COMM = new UTIL.COMM('game_container')
                 this.COMM.on('incoming', this.handleIncomingData)
+            }
+            
+            handleFocus(focusedElement, e) {
+                this.setState({
+                    focus: focusedElement
+                })
+                
+                if (focusedElement === 'messageBox') return;
+                let commands = ['/cmd', 'e', e]
+                                    
+                this.COMM.trigger('outgoing', {
+                    type: 'array',
+                    data: commands
+                })
             }
             
             handleIncomingData(data) {
@@ -179,7 +328,7 @@
                         this.state.messages.slice(1, capacity) :
                         this.state.messages.slice()
                     messages.push({
-                        bold: true,
+                        bold: data.bold,
                         text: data.from + ': ' + newMessage,
                         key: Date.now()
                     })
@@ -187,11 +336,7 @@
                     this.setState({
                         messages: messages
                     })
-                }
-            }
-            
-            handleGameClick(title) {
-                this.handleLoadGame(title)
+                } 
             }
             
             handleLoadGame(title) {
@@ -203,7 +348,7 @@
                 if (GAMES[title] === undefined) return;
                 
                 if (this.state.GAME !== undefined) {
-                    this.state.GAME.onRemoval()
+                    this.state.GAME.gameWillUnmount()
                     this.COMM.disconnect(this.state.GAME.COMM)
                 }
                 let newgame = new GAMES[title](initData)
@@ -232,20 +377,34 @@
                         if (commands[1] === 'load' && commands[2]) {
                             this.handleLoadGame(commands[2])
                         } else if (commands[1] === 'game' && commands[2]) {
-                            if (this.state.GAME && commands[2] === this.state.GAME.TITLE) {
+                            if (this.state.GAME && (commands[2] === this.state.GAME.TITLE || commands[2] === this.state.GAME._title)) {
+                                
                                 this.COMM.trigger('outgoing', {
-                                    type: 'command',
-                                    data: commands.slice(3)
+                                    type: 'array',
+                                    data: commands.slice(3)//    inputValue.substring(index)
                                 })
                             } else if (commands[2] === 'quit') {
                                 if (this.state.GAME !== undefined) {
-                                    this.state.GAME.onRemoval()
+                                    this.state.GAME.gameWillUnmount()
                                     this.COMM.disconnect(this.state.GAME.COMM)
                                 }
                                 this.setState({
                                     GAME: undefined
                                 })
                             }
+                        } else if (commands[1] == 'req') {
+                            let message = commands[2];
+                            $.ajax({
+                                url: 'test.php',
+                                method: 'POST',
+                                data: {
+                                  message: message  
+                                },
+                                dataType: 'json',
+                                complete: (data) => {
+                                    console.log(JSON.parse(data.responseText))
+                                }
+                            })
                         }
                     }
                 }
@@ -264,55 +423,67 @@
                 })
             }
             
-            render() {
-                const id = this.props.id
-                const classes = this.props.className
-                const game = this.state.GAME
-                const titles = this.props.titles
-                const messages = this.state.messages
-                const input = this.state.input
-                
-                if (this.state.GAME !== undefined && this.state.GAME.COMMUNICATION && this.state.GAME.COMMUNICATION.out) 
-                    console.log(this.state.GAME.COMMUNICATION.out)
-                
-                const menu = (
-                    <Menu 
-                        id='menu' 
-                        className='col-md-3'
-                        game={game}
-                        titles={titles}
-                        handleGameClick={this.handleGameClick}
-                    />
-                )
-                
-                return (
-                    <div id={id} className={classes} ref={el => this.domNode = el}>
-                        <Display 
-                            id='display' 
-                            className='col-md-9' 
-                            renderer={this.renderer} 
-                            game={game}
-                            handleCanvasMount={this.canvasDidMount}
-                        />
-                        
-                        <MessageBox
-                            id='message_box'
-                            className='col-md-3'
-                            handleChange={this.handleInputChange}
-                            handleInput={this.handleInput}
-                            messages={messages}
-                            input={input}
-                        />
-                    </div>
-                )
-            }
-            
-            canvasDidMount(info) {
+            handleDisplayResize(info) {
                 this.display.height = info.height
                 this.display.width = info.width
             }
             
-
+            componentDidMount() {
+                let $domNode = $(this.domNode)
+                $domNode.css({
+                    height: $(window).innerHeight() * 0.8,
+                    'max-height': $(window).innerHeight() * 0.8
+                })
+            }
+            
+            componentWillUnmount() {
+                
+            }
+            
+            
+            componentDidUpdate() {
+                
+            }
+            
+            render() {
+                const id = this.props.id
+                const game = this.state.GAME
+                const titles = this.props.titles
+                const messages = this.state.messages
+                const input = this.state.input
+                const classes = this.props.className
+                const displayClasses = this.props.displayClasses,
+                    messageBoxClasses = this.props.messageBoxClasses
+                
+                return (
+                    <div 
+                        id={id} 
+                        className={classes} 
+                        ref={el => this.domNode = el}
+                        onClick={this.handleClick}
+                    >
+                        <Display 
+                            id='display' 
+                            className={displayClasses}
+                            renderer={this.renderer} 
+                            game={game}
+                            handleDisplayResize={this.handleDisplayResize}
+                            handleFocus={this.handleFocus}
+                        />
+                        
+                        <MessageBox
+                            id='message_box'
+                            className={messageBoxClasses}
+                            handleChange={this.handleInputChange}
+                            handleInput={this.handleInput}
+                            messages={messages}
+                            input={input}
+                            handleFocus={this.handleFocus}
+                            focused={this.state.focus}
+                        />
+                    </div>
+                )
+            }
         }
         
         class Display extends React.Component {
@@ -324,36 +495,20 @@
                 }
                 
                 this.loop = this.loop.bind(this)
+                this.handleClick = this.handleClick.bind(this)
             }
             
-            render() {
-                const id = this.props.id
-                /*
-                if (this.props.game &&  this.props.game !== this.state.game) {
-                    this.mountCanvas()
-                    window.cancelAnimationFrame(this.state.animation_frame_id)
-                    this.loop()
-                }
-                */
-                return (
-                    <div 
-                        id={id} 
-                        className={this.props.className} 
-                        ref={ disp => this.domNode = disp }
-                    />
-                )
-            }
-            
-            componentDidMount() {
-                let $domNode = $(this.domNode)
-                let info = {
-                    height: $domNode.height(),
-                    width: $domNode.width()
-                }
-                this.props.handleCanvasMount(info)
+            handleClick(e) {
+                this.props.handleFocus('display', e)
             }
             
             componentDidUpdate() {
+                let $domNode = $(this.domNode)
+                this.props.handleDisplayResize({
+                    height: $domNode.height(),
+                    width: $domNode.width()
+                })
+                
                 if (this.props.game === undefined) {
                     $(this.domNode).empty()
                     window.cancelAnimationFrame(this.state.animation_frame_id)
@@ -363,6 +518,7 @@
                     this.loop()
                 }
             }
+            
             
             mountCanvas() {
                 $(this.domNode).empty()
@@ -379,98 +535,22 @@
                 })
 
             }
-
-        }
-        
-        class Menu extends React.Component {
-            constructor(props) {
-                super(props)
-            }
             
             render() {
-                let game_titles = this.props.titles
-                let game_options = game_titles.map((title, index) => {
-                    let game;
-                    if (this.props.game && this.props.game.TITLE === title) game = this.props.game;
-                    return (
-                        <MenuOption 
-                            game={game} 
-                            title={title} 
-                            key={title}
-                            handleGameClick={this.props.handleGameClick}
-                            id={"option"+index}
-                        />
-                    )
-                })
+                const id = this.props.id
                 
                 return (
-                    <div id={this.props.id} className={this.props.className}>
-                        {game_options}
-                    </div>
+                    <div 
+                        id={id} 
+                        className={this.props.className} 
+                        ref={ disp => this.domNode = disp }
+                        onClick={this.handleClick}
+                    />
                 )
             }
+
         }
         
-        class MenuOption extends React.Component {
-            constructor(props) {
-                super(props)
-                
-                this.handleClick = this.handleClick.bind(this)
-            }
-            
-            handleClick(e) {
-                this.props.handleGameClick(this.props.title)
-            }
-            
-            render() {
-                let menu_option = (
-                    <div className='card' ref={ el => this.domNode = el}>
-                        <div className='card-header'>
-                            <h5 className='mb-0'>
-                                <a data-toggle='collapse' data-parent='#menu' href={'#'+this.props.id} onClick={this.handleClick}>
-                                    {this.props.title}
-                                </a>
-                            </h5>
-                        </div>
-                        <div id={this.props.id} className='collapse'>
-                            <div className='card-block'>
-
-                            </div>
-                        </div>
-                    </div>
-                )
-                this.mountMenu()
-                return menu_option;
-                
-                /*
-                if (this.props.game) {
-                    return (
-                        <div className={this.props.className} ref={ el => this.domNode = el}>
-                            <h2>
-                                <a href='#' onClick={this.handleClick}>
-                                    {this.props.title}
-                                </a>
-                            </h2>
-                            <div>
-                            </div> 
-                        </div>
-                    )
-                }
-                */
-            }
-            
-            mountMenu() {
-                /*
-                let $container = $(this.domNode).children(':last')
-                $container.empty()
-                if (this.props.game) $container.append(this.props.game.MENU)
-                */
-                let $container = $(this.domNode).find('.card-block')
-                $container.empty()
-                if (this.props.game) $container.append(this.props.game.MENU)
-            }
-        }
-
         class LabFooter extends React.Component {
             constructor(props) {
                 super(props)
@@ -493,31 +573,47 @@
             constructor(props) {
                 super(props)
                 
+                this.handleClick = this.handleClick.bind(this)
             }
             
+            
+            componentDidUpdate() {
+                let $domNode = $(this.domNode)
+                let height = $domNode.height()
+                let offset = 1000
+                $domNode.scrollTop(height + $domNode.scrollTop() + offset)
+            }
+            
+            handleClick(e) {
+                this.props.handleFocus('messageBox', e)
+            }
             
             render() {
                 const id = this.props.id
                 const classes = this.props.className
+                let focusInputBox = false
                 
                 return (
-                    <div id={id} className={classes} ref={el => this.domNode = el}>
+                    <div 
+                        id={id} 
+                        className={classes} 
+                        ref={el => this.domNode = el}
+                        onClick={this.handleClick}
+                    >
                         <MessagesContainer
                             id='message_container'
                             messages = {this.props.messages}
+                            input={this.props.input}
                         />
                         <MessagesInputBox 
                             input={this.props.input}
                             handleChange={this.props.handleChange}
                             handleInput={this.props.handleInput}
+                            isFocused={this.props.focused === 'messageBox'}
                         />
+                        
                     </div>
                 )
-            }
-            
-            componentDidUpdate() {
-                let $domNode = $(this.domNode)
-                $domNode.scrollTop(1000)
             }
         }
         
@@ -528,20 +624,23 @@
             
             render() {
                 const id = this.props.id
-                const classes = this.props.className
                 const messages = this.props.messages.map((message, index, arr) => {
                     return (
                         <Message 
                             message={message.text} 
                             bold={message.bold} 
-                            key={message.key} 
+                            key={message.key}
+                            timeStamp={true}
                         />
                     )
                 })
                 
                 return (
-                    <div id={id} className={classes}>
+                    <div id={id}>
                         {messages}
+                        <Message
+                            message={this.props.input}
+                        />
                     </div>
                 )
             }
@@ -556,12 +655,15 @@
             render() {
                 function addParenthesis(s) {return '(' + s + ')';}
                 
-                const prefix = '--> ' + addParenthesis(this.created.toLocaleTimeString()) + ' '
+                const prefix = '--> '
                 const message = this.props.message || this.props.children
                 const classes = this.props.className + ' message'
+                const timeStamp =  addParenthesis(this.created.toLocaleTimeString()) + ' '
+                
                 return (
                     <div className={classes}>
-                        <b>{prefix}</b>
+                        {prefix}
+                        {!this.props.timeStamp ? undefined : timeStamp}
                         {
                             this.props.bold ?
                                 <b>{message}</b> :
@@ -601,11 +703,15 @@
                 $(this.domNode).trigger('focus')
             }
             
+            componentDidUpdate() {
+                if (this.props.isFocused) $(this.domNode).trigger('focus')
+            }
+            
             render() {
                 const classes = this.props.className
                 
                 return (
-                    <div className={classes + ' input-group'}>
+                    <div className={classes + ' input-group fglab_inputbox'}>
                         <span className='input-group-addon'><b>--></b></span>
                         <input 
                             value={this.props.input} 
