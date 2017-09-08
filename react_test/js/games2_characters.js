@@ -3,12 +3,10 @@
 const global_name = 'GAMES2'
 if (!window[global_name]) window[global_name] = new Object()
 
-
-
 ;$(() => {
     'use strict'
     
-    GAMES2.BALL_ANIMATION_MIXER = class extends THREE.AnimationMixer{
+    GAMES2.BALL_ANIMATION_MIXER = class extends THREE.AnimationMixer {
         constructor(ball, radius, ringDiameter, weap2Delay) {
             super(ball)
             let pi = Math.PI
@@ -114,14 +112,24 @@ if (!window[global_name]) window[global_name] = new Object()
     }
     
     GAMES2.BALL = class extends THREE.Group {
-        constructor(radius ,mass) {
+        constructor(radius ,mass, controls) {
             super()
             const self = this
+            this.radius = radius
             this.mass = mass
             this.velocity = new THREE.Vector3()
             this.rayc = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, -1), 0, 2*radius*10/40)//3.5*radius*10/40)
             this.keys = {}
-            this.firePoint = new THREE.Group()
+            this.controls = controls || {enabled: true, up: 0, down: 0, left: 0, right: 0, weap1: 0, weap2: 0, jump: 0}
+            this.hitBox = undefined
+            this.timers = {
+                controls: {
+                    end: 0
+                }
+            }
+            this.prev = {
+                keys: {}
+            }
             
             let body = new THREE.Group()
             body.name = 'body';
@@ -137,18 +145,14 @@ if (!window[global_name]) window[global_name] = new Object()
             ball.castShadow = true
             ball.name = 'head'
             ball.update = function(data) {
-                if (self.actions && !self.actions.action['run'].isRunning()) {
-                    let action = self.actions.action['standing']
+                if (self.mixer && !self.mixer.action['run'].isRunning()) {
+                    let action = self.mixer.action['standing']
                     if (action.isRunning()) return;
-                    //  self.actions.stopAllAction()
                     action.play()
-                    
                 }
 
             }
-            
-            this.firePoint.position.set(10000, 0, 0)
-            this.add(this.firePoint)
+            this.hitBox = ball
             
             let eyes = new THREE.Group()
             let eye1 = new THREE.Mesh(
@@ -217,236 +221,104 @@ if (!window[global_name]) window[global_name] = new Object()
             
             body.add(ball); body.add(legs)
             this.body = body; body.head = ball; body.legs = legs
-
+            
+            const weap2Cooldown = 2
             this.weapons = {
+                projectile_queue: [],
                 weap1: {
-                    ammo: (() => {
-                        class Projectile extends THREE.Mesh {
-                            constructor(weap1_initData) {
-                                super(
-                                    weap1_initData.geometry.clone(true),
-                                    weap1_initData.material.clone(true)
-                                )
-                                let initData = weap1_initData
-                                this.inScene = false
-                                this.active = false
-                                this.castShadow = true
-                                this.direction = new THREE.Vector3()
-                                this.rayc = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(), 0, 2*initData.radius)
-                            }
-                            
-                            update(data) {
-                                if (!this.active) return;
-                                
-                                let deltaPosition = this.rayc.ray.direction.clone().multiplyScalar(700 * data.dt)
-                                this.position.add(deltaPosition)
-                                
-                                if (this.position.length() > 1000) this.deactivate()
-                                this.rayc.ray.origin.add(deltaPosition)
-                                
-                                let intersections = this.rayc.intersectObjects(data.game.scene.children, true)
-                                for (let i=0 ; i<intersections.length ; i++) {
-                                    if (intersections[i].object.isSurface || intersections[i].object.isEnemy) {
-                                        this.handleHit(data, intersections[i].object)
-                                        break;
-                                    }
-                                }
-                            }
-                            
-                            activate(data) {
-                                this.position.copy(data.position)
-                                this.rayc.ray.direction.copy(data.direction)
-                                this.rayc.ray.origin.copy(data.position)
-                                let adjust = data.direction.clone().normalize().multiplyScalar(2*this.rayc.far)
-                                this.rayc.ray.origin.sub(adjust)
-                                
-                                this.visible = true
-                                this.active = true
-                            }
-                            
-                            deactivate(data) {
-                                this.active = false
-                                this.visible = false
-                            }
-                            
-                            handleHit(data, target) {
-                                this.deactivate()
-                            }
-                            
-                        } 
-                        
-                        let ammo = [Projectile]
-                        let initialSupply = 5
-                        let projectileRadius = radius/3
-                        let initData = {
-                            radius: projectileRadius,
-                            geometry: new THREE.SphereGeometry(projectileRadius),
-                            material: new THREE.MeshBasicMaterial({color: new THREE.Color('yellow')})
-                        }
-                        for (let i=0 ; i<initialSupply ; i++) ammo.push(new Projectile(initData))
-                        return ammo;
-                    })(),
+                    cleared: true,
                     prev: 0,
                     cooldown: 1 / 2,
                     direction: new THREE.Vector3(1, 0, 0),
                     update: function(data) {
                         let game = data.game
-                        if (game.clock.getElapsedTime()-this.prev < this.cooldown || self.weapons.weap2.progress === 1) return;
-                        for (let i=1 ; i<this.ammo.length ; i++) {
-                            if (this.ammo[i].active) continue;
+                        if (game.clock.getElapsedTime()-this.prev < this.cooldown || self.weapons.weap2.progress === 1 || !this.cleared)  return;
+                        for (let i=0 ; i<self.weapons.projectile_queue.length ; i++) {
+                            if (self.weapons.projectile_queue[i].active) continue;
                             this.direction.set(1, 0, 0)
                             this.direction.applyAxisAngle(new THREE.Vector3(0,0,1), self.rotation.z)
                             let activateData = {
                                 direction: this.direction,
-                                position: self.body.head.getWorldPosition().add(this.direction.clone().multiplyScalar(1.5 * radius))
+                                position: self.body.head.getWorldPosition().add(this.direction.clone().multiplyScalar(1.5 * radius)),
+                                rotation: self.rotation.z
                             }
-                            if (!this.ammo[i].inScene) {
-                                data.game.scene.add(this.ammo[i]); data.game.objects.env.push(this.ammo[i])
-                                this.ammo[i].inScene = true
+                            if (!self.weapons.projectile_queue[i].inScene) {
+                                data.game.scene.add(self.weapons.projectile_queue[i]); data.game.objects.env.push(self.weapons.projectile_queue[i])
+                                self.weapons.projectile_queue[i].inScene = true
                             }
-                            this.ammo[i].activate(activateData)
+                            self.weapons.projectile_queue[i].activate(activateData)
                             this.prev = game.clock.getElapsedTime()
+                            this.audio.currentTime = 0; this.audio.play()
+                            if (self.weapons.projectile_queue[i] instanceof GAMES2_HELPER.BALL_Weap3) {
+                                self.weapons.weap3.activated = false
+                                self.weapons.projectile_queue.splice(i, 1)
+                                self.velocity.x = -3000
+                                self.controls.enabled = false
+                                self.timers.controls.end = data.game.clock.getElapsedTime() + self.weapons.weap3.cast_time
+                            }
+                            this.cleared = false
                             break;
                         }
                         
-                    }
+                    },
+                    audio: (()=>{
+                        let audio = document.createElement('audio')
+                        audio.volume = 0.25
+                        let source = document.createElement('source')
+                        audio.appendChild(source)
+                        source.src = 'audio/weap1_trimmed.wav'; source.type = 'audio/wav'
+                        
+                        return audio;
+                    })()
                 },
                 weap2: {
                     progress: 0,
                     prev: 0,
-                    cooldown: 2,
+                    cooldown: weap2Cooldown,
                     fadeTime: 0,
                     delay: 0.1,//0.1,
-                    theta: (2/3)*Math.PI,
-                    blades: (() => {
-                        class Blade extends THREE.Mesh {
-                            
-                            constructor(range, lengthToHandle, lengthToTip) {
-                                super (new THREE.Geometry(), new THREE.MeshBasicMaterial({color: new THREE.Color('lightgreen'), transparent: true, side: THREE.DoubleSide}))
-                                this.active = false
-                                this.onScene = false
-                                this.range = range
-                                this.lengthToHandle = lengthToHandle
-                                this.lengthToTip = lengthToTip
-                                this.elapsed = undefined
-                                this.collisionCheck = false
-                                this.checkResolution = 16
-                                this.rayc = new THREE.Raycaster(
-                                    new THREE.Vector3(), 
-                                    new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0,0,1), range/2),
-                                    0,
-                                    lengthToTip
-                                )
-                                let rotationAxis = new THREE.Vector3(0,0,1)
-                                let dir = new THREE.Vector3(lengthToTip,0,0).applyAxisAngle(rotationAxis, range/2)
-                                for (let i=0, d=this.checkResolution ; i<=d ; i++) {
-                                    if (i%2 === 0) {
-                                        this.geometry.vertices.push(dir.clone())
-                                        this.geometry.vertices.push(dir.clone().multiplyScalar(lengthToHandle/lengthToTip))
-                                    }
-                                    dir.applyAxisAngle(rotationAxis, -range/d)
-                                }
-                                for (let i=0 ; i<this.geometry.vertices.length-2 ; i++) {
-                                    this.geometry.faces.push(new THREE.Face3(i, i+1, i+2))
-                                }
-                                this.geometry.computeBoundingSphere()
-                                this.geometry.computeFaceNormals()
-                                this.material.opacity = 0
-                            }
-                            
-                            update(data) {
-                                if (!this.active) return;
-                                
-                                if (this.elapsed >= 1) this.deactivate(data)
-                                else if (this.elapsed >= 0.5) this.material.opacity -= 0.8 * data.dt / (1/2)
-                                else if (this.material.opacity < 0.8) {
-                                    this.material.opacity = Math.min(0.8, this.material.opacity+0.01*(this.elapsed/data.dt)*(this.elapsed/data.dt))
-                                    if (this.material.opacity === 0.8 && !this.collisionCheck) {
-                                        this.checkForCollisions(data)
-                                        this.collisionCheck = true
-                                    }
-                                }
-                                
-                                this.elapsed += data.dt
-                            }
-                            
-                            checkForCollisions(data) {
-                                let axis = new THREE.Vector3(0,0,1)
-                                this.rayc.ray.direction.applyAxisAngle(axis, this.range/2)
-                                for (let i=0 ; i<=this.checkResolution ; i++) {
-                                    let intersections = this.rayc.intersectObjects(data.game.objects.enemies)
-                                    for (let obj=0 ; obj<intersections.length ; obj++) {
-                                        if (intersections[obj].object.isEnemy) {
-                                            this.onCollision()
-                                        }
-                                    }
-                                    this.rayc.ray.direction.applyAxisAngle(axis, -this.range/this.checkResolution)
-                                }
-                            }
-                            
-                            onCollision() {
-                                console.log('intersected enemy')
-                            }
-                            
-                            activate(data, position, thetaOffset) {
-                                this.visible = true
-                                this.elapsed = 0
-                                this.collisionCheck = false
-                                this.position.copy(position)
-                                this.rotation.z = thetaOffset
-                                this.rayc.ray.origin.copy(position)
-                                this.rayc.ray.direction.set(1,0,0).applyAxisAngle(new THREE.Vector3(0,0,1), thetaOffset)
-                                if (!this.onScene) {
-                                    data.game.scene.add(this); data.game.objects.env.push(this)
-                                    this.onScene = true
-                                }
-                                this.active = true
-                            }
-                            
-                            deactivate(data) {
-                                this.active = false
-                                this.visible = false
-                            }
-                        }
-                        let blades = [Blade]
-                        let range = Math.PI/2
-                        let lengthToTip = 5 * radius
-                        let lengthToHandle = lengthToTip/2
-                        let supply = Math.floor(1/2/*cooldown*/) + 1
-                        for (let i=0 ; i<supply ; i++) blades.push(new Blade(range, lengthToHandle, lengthToTip))
-                        return blades;
-                    })(),
-                    rayc: new THREE.Raycaster(new THREE.Vector3(),((new THREE.Vector3(1, 0, 0)).applyAxisAngle(new THREE.Vector3(0,0,1), 0.5*this.theta)).normalize(), 0, 5*radius),
-                    onCast: function(data, origin, thetaOffset) {
-                        this.rayc.ray.origin.copy(origin)
-                        this.rayc.ray.direction.copy(((new THREE.Vector3(1, 0, 0)).applyAxisAngle(new THREE.Vector3(0,0,1), 0.5*this.theta)).normalize())
-                        this.rayc.ray.direction.applyAxisAngle(new THREE.Vector3(0, 0, 1), thetaOffset)
-                        for (let i=0, d=16 ; i<=d ; i++) {
-                            let intersections = this.rayc.intersectObjects(data.game.scene.children)
-                            for (let j=0 ; j<intersections.length ; j++) {
-                                if (intersections[j].object.isEnemy) console.log('intersected enemy')
-                            }
-                            this.rayc.ray.direction.applyAxisAngle(new THREE.Vector3(0, 0, 1), -this.theta/d)
-                        }
-                        this.progress = 3
+                    theta: (1/2)*Math.PI,
+                    blades: [GAMES2_HELPER.BALL_Blade],
+                    damage: 20,
+                    onHit: function(data, intersection) {
+                        let obj = intersection.object
+                        let current = obj
+                        while (current && current.health === undefined) current = current.parent;
+                        if (!current || current.health === undefined) return;
+                        current.health.update({damage: this.damage})
                     },
+                    rayc: new THREE.Raycaster(new THREE.Vector3(),((new THREE.Vector3(1, 0, 0)).applyAxisAngle(new THREE.Vector3(0,0,1), 0.5*this.theta)).normalize(), 0, 5*radius),
                     update: function(data) {
 
-                        if (this.progress === 0 && data.game.clock.getElapsedTime()-this.prev>this.cooldown) {
+                        if (this.progress === 0 && data.game.clock.getElapsedTime()-this.prev>this.cooldown ) {
                             this.rayc.ray.direction.copy(((new THREE.Vector3(1, 0, 0)).applyAxisAngle(new THREE.Vector3(0,0,1), 0.5*this.theta+self.rotation.z)).normalize())
                             this.prev = data.game.clock.getElapsedTime()
-                            self.actions.existingAction(self.actions.clips.standing).paused = true
-                            self.actions.stopAllAction()
-                            let weap2Action = self.actions.existingAction(self.actions.clips.weap2)
+                            self.mixer.existingAction(self.mixer.clips.standing).paused = true
+                            self.mixer.stopAllAction()
+                            let weap2Action = self.mixer.existingAction(self.mixer.clips.weap2)
                             weap2Action.reset(); weap2Action.play()
+                            this.audio.currentTime = 0; this.audio.play()
                             
                             this.progress = 1
                         } else if (this.progress === 1) {
                             if (data.game.clock.getElapsedTime() - this.prev >= this.delay) {
+                                let activated = false
                                 for (let i=1 ; i<this.blades.length ; i++) {
                                     if (this.blades[i].active) continue;
                                     this.blades[i].activate(data, self.body.head.getWorldPosition(), self.rotation.z)
+                                    activated = true
                                     break;
+                                }
+                                if (!activated) {
+                                    let bladeInit = {
+                                        range: this.theta,
+                                        lengthToTip: 5 * radius,
+                                        lengthToHandle: (5/2) * radius,
+                                        targets: data.game.objects.enemies,
+                                        onHit: this.onHit
+                                    }
+                                    this.blades.push(new this.blades[0](bladeInit))
+                                    this.blades[this.blades.length-1].activate(data, self.body.head.getWorldPosition(), self.rotation.z)
                                 }
                                 this.progress = 2
                             }
@@ -457,55 +329,136 @@ if (!window[global_name]) window[global_name] = new Object()
                                 this.fadeTime = 0
                             }
                         } 
+                    },
+                    audio: (()=>{
+                        let audio = document.createElement('audio')
+                        audio.volume = 0.35/2
+                        let source = document.createElement('source')
+                        audio.appendChild(source)
+                        source.src = 'audio/lightsaber_trimmed.mp3'; source.type = 'audio/mpeg'
+                        
+                        return audio;
+                    })()
+                    
+                },
+                weap3: {
+                    stacks: 3,
+                    cooldown: 5,
+                    progress: 0,
+                    cast_time: 0.5,
+                    prev: 0,
+                    last_recharge: 0,
+                    activated: false,
+                    ammo: [],
+                    update: function(data) {
+                        this.update_stacks(data)
+                        if (this.stacks === 0 || data.game.clock.getElapsedTime()-this.prev < this.cast_time || this.activated) return;
+                        //  setup and fire
+                        for (let i=0 ; i<this.ammo.length ; i++) {
+                            if (!this.ammo[i].active) {
+                                self.weapons.projectile_queue.unshift(this.ammo[i])
+                                break;
+                            }
+                        }
+                        self.weapons.weap1.prev = self.weapons.weap1.prev - self.weapons.weap1.cooldown
+                        
+                        //
+                        
+                        this.activated = true
+                        this.stacks--;
+                        this.prev = data.game.clock.getElapsedTime()
+                        
+                    },
+                    update_stacks: function(data) {
+                        if (this.stacks === 3) return
+                        let since_last = data.game.clock.getElapsedTime() - this.last_recharge - this.cast_time
+                        if (since_last > this.cooldown) {
+                            this.stacks = Math.max(Math.min(3, Math.floor(since_last/this.cooldown)), 0)
+                            this.last_recharge = data.game.clock.getElapsedTime()
+                        }
                     }
                 }
                 
             }
-            this.weapons.weap2.onCast = this.weapons.weap2.onCast.bind(this.weapons.weap2)
+            let initialSupply = 5
+            let projectileRadius = radius/3
+            let weap1InitData = {
+                radius: projectileRadius,
+                geometry: new THREE.SphereGeometry(projectileRadius),
+                material: new THREE.MeshBasicMaterial({color: new THREE.Color('yellow')})
+            }
+            for (let i=0 ; i<initialSupply ; i++) this.weapons.projectile_queue.push(new GAMES2_HELPER.BALL_Weap1(weap1InitData))
+            this.weapons.weap2.onHit = this.weapons.weap2.onHit.bind(this.weapons.weap2)
+            this.health = {
+                bar: new GAMES2_HELPER.HealthBar(2 * radius),
+                full: 200,
+                current: 200,
+                update: function(data) {
+                    this.current = Math.max(0, this.current - data.damage)
+                    this.bar.update(this.current/this.full)
+                }
+            }
+            for (let i=0 ; i<this.weapons.weap3.stacks ; i++) this.weapons.weap3.ammo.push(new GAMES2_HELPER.BALL_Weap3({radius: 0.8 * radius}))
             
-            this.actions = new GAMES2.BALL_ANIMATION_MIXER(this, radius, radius*diameterToRadius, this.weapons.weap2.delay)
+            this.health.bar.rotation.z = Math.PI/2; this.health.bar.position.set(0, 0, 3 * radius)
+            
+            this.mixer = new GAMES2.BALL_ANIMATION_MIXER(this, radius, radius*diameterToRadius, this.weapons.weap2.delay)
+        }
+        
+        enable_controls(data) {
+            if (data.game.clock.getElapsedTime() >= this.timers.controls.end) this.controls.enabled = true
         }
         
         update(data) {
             let g = 9.8
+            this.prev.keys = this.keys
             this.keys = data.keys
-                                        
-            this.velocity.x = this.velocity.x * 0.75
-            this.velocity.y = this.velocity.y * 0.75
-            if (Math.abs(this.velocity.x<1)) this.velocity.x = 0
-            if (Math.abs(this.velocity.y<1)) this.velocity.y = 0
+            this.enable_controls(data)
+            const weap2On = this.mixer.existingAction(this.mixer.clips.weap2).isRunning()
             
-            if ((this.keys[90]) && this.velocity.z === 0) {
+            if (weap2On && this.controls.enabled) {
+                this.velocity.x = this.velocity.x * 0.95
+                this.velocity.y = this.velocity.y * 0.95
+            } else {
+                this.velocity.x = this.velocity.x * 0.75
+                this.velocity.y = this.velocity.y * 0.75
+            }
+            
+            if (Math.abs(this.velocity.x)<1) this.velocity.x = 0
+            if (Math.abs(this.velocity.y)<1) this.velocity.y = 0
+            
+            if ((this.keys[this.controls.jump]) && this.velocity.z === 0) {
                 this.velocity.z = 600
-                if (!this.actions.checks.run) {
-                    this.actions.existingAction(this.actions.clips.standing).paused = true
-                    this.actions.existingAction(this.actions.clips.jump).play()
+                if (!this.mixer.checks.run) {
+                    this.mixer.existingAction(this.mixer.clips.standing).paused = true
+                    this.mixer.existingAction(this.mixer.clips.jump).play()
                 }
             }
             this.velocity.z += -g * this.mass * data.dt
             
-            if (this.keys[37]) {
-                this.velocity.x = 500
-                if (this.keys[38]) this.rotation.z = 3/4 * Math.PI
-                else if (this.keys[40]) this.rotation.z = -3/4 * Math.PI
-                else this.rotation.z = Math.PI
-            } else if (this.keys[38]) {
-                this.velocity.x = 500
-                if (this.keys[37]) this.rotation.z = 3/4 * Math.PI
-                else if (this.keys[39]) this.rotation.z = 1/4 * Math.PI
-                else this.rotation.z = 1/2 * Math.PI
-            } else if (this.keys[39]) {
-                this.velocity.x = 500
-                if (this.keys[38]) this.rotation.z = 1/4 * Math.PI
-                else if (this.keys[40]) this.rotation.z = -1/4 * Math.PI
-                else this.rotation.z = 0
-            } else if (this.keys[40]) {
-                this.velocity.x = 500
-                if (this.keys[37]) this.rotation.z = -3/4 * Math.PI
-                else if (this.keys[39]) this.rotation.z = -1/4 * Math.PI
-                else this.rotation.z = -1/2 * Math.PI
+            if (this.controls.enabled && !weap2On) {
+                if (this.keys[this.controls.left]) {
+                    this.velocity.x = Math.min(500, this.velocity.x + 200)
+                    if (this.keys[this.controls.up]) this.rotation.z = 3/4 * Math.PI
+                    else if (this.keys[this.controls.down]) this.rotation.z = -3/4 * Math.PI
+                    else this.rotation.z = Math.PI
+                } else if (this.keys[this.controls.up]) {
+                    this.velocity.x = Math.min(500, this.velocity.x + 200)
+                    if (this.keys[this.controls.left]) this.rotation.z = 3/4 * Math.PI
+                    else if (this.keys[this.controls.right]) this.rotation.z = 1/4 * Math.PI
+                    else this.rotation.z = 1/2 * Math.PI
+                } else if (this.keys[this.controls.right]) {
+                    this.velocity.x = Math.min(500, this.velocity.x + 200)
+                    if (this.keys[this.controls.up]) this.rotation.z = 1/4 * Math.PI
+                    else if (this.keys[this.controls.down]) this.rotation.z = -1/4 * Math.PI
+                    else this.rotation.z = 0
+                } else if (this.keys[this.controls.down]) {
+                    this.velocity.x = Math.min(500, this.velocity.x + 200)
+                    if (this.keys[this.controls.left]) this.rotation.z = -3/4 * Math.PI
+                    else if (this.keys[this.controls.right]) this.rotation.z = -1/4 * Math.PI
+                    else this.rotation.z = -1/2 * Math.PI
+                }
             }
-            
             this.translateX(this.velocity.x * data.dt)
             this.position.z += this.velocity.z * data.dt
             
@@ -533,17 +486,16 @@ if (!window[global_name]) window[global_name] = new Object()
                 }   
             }
             
-            //if ((this.keys[37]||this.keys[38]||this.keys[39]||this.keys[40]) && !this.actions.checks.run) {
-            if (!this.actions.existingAction(this.actions.clips.weap2).isRunning()) {
-                if ((this.velocity.x !== 0 || this.velocity.y !==0)) {
-                    if (!this.actions.checks.run ) {
-                        this.actions.checks.run = true
-                        this.actions.stopAllAction()
-                        let run = this.actions.existingAction(this.actions.clips.run)
+            if (!weap2On) {
+                if ((this.velocity.x !== 0 || this.velocity.y !==0) && this.controls.enabled && (this.keys[this.controls.up]||this.keys[this.controls.down]||this.keys[this.controls.left]||this.keys[this.controls.right])) {
+                    if (!this.mixer.checks.run ) {
+                        this.mixer.checks.run = true
+                        this.mixer.stopAllAction()
+                        let run = this.mixer.existingAction(this.mixer.clips.run)
                         run.play()
-                    } else if (this.actions.checks.run) {
-                        let running = this.actions.existingAction(this.actions.clips.running)
-                        if (!running.isRunning() && !this.actions.existingAction(this.actions.clips.weap2).isRunning()) {
+                    } else if (this.mixer.checks.run) {
+                        let running = this.mixer.existingAction(this.mixer.clips.running)
+                        if (!running.isRunning() && !this.mixer.existingAction(this.mixer.clips.weap2).isRunning()) {
                             running.reset()
                             running.play()
                         }
@@ -551,19 +503,28 @@ if (!window[global_name]) window[global_name] = new Object()
                     
                 } 
                 else if (this.velocity.length() === 0) {
-                    this.actions.checks.run = false
-                    let standing = this.actions.existingAction(this.actions.clips.standing)
+                    this.mixer.checks.run = false
+                    let standing = this.mixer.existingAction(this.mixer.clips.standing)
                     if (!standing.isRunning()) {
-                        this.actions.stopAllAction()
+                        this.mixer.stopAllAction()
                         standing.play()
                     }
                 }
             }
 
         
-            if (this.keys[88]) this.weapons.weap1.update(data)
-            if (this.keys[83] || this.weapons.weap2.progress > 0) this.weapons.weap2.update(data)
-            this.actions.update(data.dt)
+            if (this.keys[this.controls.weap1] && !weap2On) this.weapons.weap1.update(data)
+            else if (!this.keys[this.controls.weap1]) this.weapons.weap1.cleared = true
+            if (this.keys[this.controls.weap2] || this.weapons.weap2.progress > 0) this.weapons.weap2.update(data)
+            if (this.keys[this.controls.weap3]) this.weapons.weap3.update(data)
+            
+            if (!this.health.onScene) {
+                data.game.scene.add(this.health.bar)
+                this.health.onScene = true
+            }
+            this.health.bar.position.copy(this.position); this.health.bar.position.z += 3 * this.radius
+
+            this.mixer.update(data.dt)
 
         }
     }

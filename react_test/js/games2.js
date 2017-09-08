@@ -218,10 +218,10 @@ if (!window.GAMES) window.GAMES = new Object();
                                 //directional.shadow.mapSize.width = game.canvasWidth
                                 //directional.shadow.mapSize.height = game.canvasHeight
                                 directional.shadow.camera.far = 500
-                                directional.shadow.camera.left = -500
-                                directional.shadow.camera.right = 500
-                                directional.shadow.camera.top = 500
-                                directional.shadow.camera.bottom = -500
+                                directional.shadow.camera.left = -600
+                                directional.shadow.camera.right = 600
+                                directional.shadow.camera.top = 600
+                                directional.shadow.camera.bottom = -600
                                 game.objects.env.push(directional); game.scene.add(directional)
                                 
                                 let hemisphere = new THREE.HemisphereLight(0xffffff, 1)
@@ -232,7 +232,7 @@ if (!window.GAMES) window.GAMES = new Object();
                                 game.objects.env.push(ambient)
                                 game.scene.add(ambient)
                                 
-                                let platform = new THREE.Mesh(new THREE.CylinderGeometry(450, 100, 500, 32), new THREE.MeshStandardMaterial({color: 0x99ccff}))
+                                let platform = new THREE.Mesh(new THREE.CylinderGeometry(600, 100, 500, 32), new THREE.MeshStandardMaterial({color: 0x99ccff}))
                                 platform.position.set(0, 0, -200)
                                 platform.rotation.x = Math.PI/2
                                 platform.isSurface = true
@@ -255,8 +255,18 @@ if (!window.GAMES) window.GAMES = new Object();
                                 //game.objects.env.push(bulge)
                                 //game.objects.env.push(bulgeAnchor);bulgeAnchor.add(bulge); platform.add(bulgeAnchor)
                                 let box = new THREE.Mesh(new THREE.CubeGeometry(200, 200, 200), new THREE.MeshStandardMaterial())
-                                box.isEnemy = true; box.position.set(300, 0, 100)
-                                game.scene.add(box); game.objects.enemies.push(box)
+                                box.isEnemy = true; box.position.set(450, 0, 100)
+                                box.health = {
+                                    full: 2000,
+                                    current: 2000,
+                                    bar: new GAMES2_HELPER.HealthBar(200),
+                                    update: function(data) {
+                                        this.current = Math.max(0, this.current - data.damage)
+                                        this.bar.update(this.current/this.full)
+                                    }
+                                }
+                                box.add(box.health.bar); box.health.bar.position.set(0, 0, 250); box.health.bar.rotation.z = Math.PI/2
+                                game.scene.add(box); game.objects.env.push(box); game.objects.enemies.push(box)
 
                                 game.camera.position.set(0, -1000, 1000)
                                 game.camera.lookAt(new THREE.Vector3(0, 100, 0))
@@ -270,8 +280,8 @@ if (!window.GAMES) window.GAMES = new Object();
                         loadTest: {
                             update: function(data) {
                                 let game = self.GAME
-
-                                let test = new GAMES2.BALL(50, 150)
+                                let radius = 50
+                                let test = new GAMES2.BALL(radius, radius * (150/50), {enabled: true, left: 37, up:38, right:39, down:40, weap1: 88, weap2: 83, weap3: 65, jump: 90})
                                 test.position.set(0, 0, 200) 
                                 game.objects.test = test
                                 game.scene.add(test)
@@ -352,9 +362,20 @@ if (!window.GAMES) window.GAMES = new Object();
                     } else if (commands[2] === 'focus') {
                         let obj = this.GAME.scene.getObjectByName(commands[3])
                         console.log(obj)
-                        this.GAME.mouse.focused = obj
-                        
-                    } 
+                        this.GAME.mouse.focused = obj;
+                        (()=>{
+                            eval(commands[4])
+                        }).call(obj)
+                    } else if (commands[2] === 'dummy') {
+                        let radius = 50
+                        let dummy = new GAMES2.BALL(radius, radius * (150/50))
+                        this.GAME.scene.add(dummy); this.GAME.objects.enemies.push(dummy.hitBox); this.GAME.objects.players.push(dummy)
+                        dummy.position.set(0, 0, 300)
+                    } else if (commands[2] === 'weap3') {
+                        let weap3 = new GAMES2_HELPER.BALL_Weap3({radius: 50*0.8})
+                        this.GAME.scene.add(weap3)
+                        weap3.position.set(0, 0, 200)
+                    }
                 }
             }
         }
