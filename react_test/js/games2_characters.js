@@ -251,6 +251,7 @@ if (!window[global_name]) window[global_name] = new Object()
                             this.audio.currentTime = 0; this.audio.play()
                             if (self.weapons.projectile_queue[i] instanceof GAMES2_HELPER.BALL_Weap3) {
                                 self.weapons.weap3.activated = false
+                                self.weapons.weap3.prev = data.game.clock.getElapsedTime()
                                 self.weapons.projectile_queue.splice(i, 1)
                                 self.velocity.x = -3000
                                 self.controls.enabled = false
@@ -361,20 +362,22 @@ if (!window[global_name]) window[global_name] = new Object()
                             }
                         }
                         self.weapons.weap1.prev = self.weapons.weap1.prev - self.weapons.weap1.cooldown
-                        
-                        //
-                        
                         this.activated = true
                         this.stacks--;
-                        this.prev = data.game.clock.getElapsedTime()
+                        //this.prev = data.game.clock.getElapsedTime()
                         
                     },
                     update_stacks: function(data) {
                         if (this.stacks === 3) return
-                        let since_last = data.game.clock.getElapsedTime() - this.last_recharge - this.cast_time
+                        let elapsed = data.game.clock.getElapsedTime()
+                        if (!this.last_recharge) this.last_recharge = elapsed
+                        let since_last = elapsed - this.last_recharge
+                        
                         if (since_last > this.cooldown) {
-                            this.stacks = Math.max(Math.min(3, Math.floor(since_last/this.cooldown)), 0)
-                            this.last_recharge = data.game.clock.getElapsedTime()
+                            this.stacks = Math.max(Math.min(3, this.stacks+Math.floor(since_last/this.cooldown)), 0)
+                            
+                            if (this.stacks === 3) this.last_recharge = 0 
+                            else this.last_recharge = data.game.clock.getElapsedTime()
                         }
                     }
                 }
@@ -512,11 +515,10 @@ if (!window[global_name]) window[global_name] = new Object()
                 }
             }
 
-        
+            if (this.keys[this.controls.weap3]) this.weapons.weap3.update(data)
             if (this.keys[this.controls.weap1] && !weap2On) this.weapons.weap1.update(data)
             else if (!this.keys[this.controls.weap1]) this.weapons.weap1.cleared = true
             if (this.keys[this.controls.weap2] || this.weapons.weap2.progress > 0) this.weapons.weap2.update(data)
-            if (this.keys[this.controls.weap3]) this.weapons.weap3.update(data)
             
             if (!this.health.onScene) {
                 data.game.scene.add(this.health.bar)
